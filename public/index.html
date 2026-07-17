@@ -4,67 +4,28 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>軌郭山終極入門考驗</title>
-  
-  <!-- 引入 Tailwind CSS 進行排版 -->
   <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- 引入 Lucide Icons 圖示庫 -->
   <script src="https://unpkg.com/lucide@latest"></script>
-  
-  <!-- 引入 Google Fonts (仙俠風字體) -->
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700;900&display=swap" rel="stylesheet">
-  
   <style>
-    body { font-family: 'Noto Serif TC', serif; background-color: #1b100c; color: #f5efe6; margin: 0; overscroll-behavior: none; }
+    body { font-family: 'Noto Serif TC', serif; }
     .animate-spin-slow { animation: spin 3s linear infinite; }
-    @keyframes spin { 100% { transform: rotate(360deg); } }
     .fade-in { animation: fadeIn 0.5s ease-in; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-    /* 相機邊框特效 */
-    .camera-frame { border: 16px solid transparent; border-image: url('https://www.transparenttextures.com/patterns/wood-pattern.png') 30 stretch; background-color: rgba(62, 39, 35, 0.4); }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .bg-rice-paper { background-image: url('https://www.transparenttextures.com/patterns/rice-paper.png'); }
+    .glass-panel { background: rgba(252, 248, 242, 0.95); backdrop-filter: blur(4px); }
+    /* 避免手機長按反白，提升 App 體驗 */
+    .touch-manipulation { touch-action: manipulation; }
   </style>
 </head>
-<body>
+<body class="bg-[#1b100c] text-[#3e2723] selection:bg-[#8d6e63]/30 min-h-screen">
+  
+  <div id="app" class="w-full h-full"></div>
 
-  <!-- 遊戲主要渲染區塊 -->
-  <div id="root"></div>
-
-  <div id="camera-modal" class="fixed inset-0 bg-black z-50 hidden flex-col items-center justify-center">
-    <div class="relative w-full h-full max-w-md mx-auto flex flex-col justify-center">
-      <!-- 相機視訊畫面 -->
-      <video id="camera-video" class="w-full h-auto object-cover border-8 border-[#5d4037] rounded-sm shadow-2xl" playsinline autoplay muted></video>
-      <!-- 畫布 (隱藏，用於繪製照片與邊框) -->
-      <canvas id="camera-canvas" class="hidden"></canvas>
-      <!-- 照片預覽 -->
-      <img id="photo-preview" class="hidden w-full h-auto border-8 border-[#5d4037] rounded-sm shadow-2xl" />
-      
-      <!-- 相機操作按鈕 -->
-      <div id="camera-controls" class="absolute bottom-10 left-0 right-0 flex justify-center gap-6 px-4">
-        <button id="btn-take-photo" onclick="takePhoto()" class="bg-[#2e4c3a] text-[#f1f8e9] p-4 rounded-full shadow-lg border-2 border-[#a5d6a7] active:scale-95">
-          <i data-lucide="camera" class="w-8 h-8"></i>
-        </button>
-        <button onclick="closeCamera()" class="bg-[#c62828] text-white p-4 rounded-full shadow-lg border-2 border-[#ffcdd2] active:scale-95">
-          <i data-lucide="x" class="w-8 h-8"></i>
-        </button>
-      </div>
-
-      <!-- 分享與重拍按鈕 (預設隱藏) -->
-      <div id="share-controls" class="absolute bottom-10 left-0 right-0 hidden flex justify-center gap-4 px-4">
-        <button onclick="sharePhoto()" class="bg-[#2e4c3a] text-white px-6 py-3 rounded-sm font-bold tracking-widest shadow-lg flex items-center gap-2 active:scale-95 border border-[#a5d6a7]">
-          <i data-lucide="share-2"></i> 分享留念
-        </button>
-        <button onclick="retakePhoto()" class="bg-[#5d4037] text-white px-6 py-3 rounded-sm font-bold tracking-widest shadow-lg flex items-center gap-2 active:scale-95">
-          <i data-lucide="refresh-cw"></i> 重拍
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 遊戲核心邏輯 -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-    import { getFirestore, doc, getDoc, updateDoc, onSnapshot, arrayUnion } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, collection, query, where, getDocs, arrayUnion } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyBadB--5Es1xkGaS3qFFepNVySVyQEMIZg",
@@ -72,14 +33,23 @@
       projectId: "hkskh-mos-puzzle-hunt",
       storageBucket: "hkskh-mos-puzzle-hunt.firebasestorage.app",
       messagingSenderId: "947464222339",
-      appId: "1:947464222339:web:55f8ba8e12ed20a8060db6",
-      measurementId: "G-NX03J1BJEM"
+      appId: "1:947464222339:web:55f8ba8e12ed20a8060db6"
     };
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
 
+    // 全域狀態管理
+    let state = {
+      user: null, authLoading: true, isActivated: false,
+      teamCode: '', stage: 0, view: 'story', hintsRevealed: 0,
+      authMode: 'login', authError: '', actError: '', cameraStream: null
+    };
+
+    let teamUnsubscribe = null;
+
+    // 背景圖庫 (仙俠風)
     const BACKGROUNDS = {
       intro: 'https://images.unsplash.com/photo-1542834369-f10ebf06d3e0?auto=format&fit=crop&w=1920&q=80',
       m1: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1920&q=80',
@@ -93,456 +63,533 @@
       bad: 'https://images.unsplash.com/photo-1478059425650-ca13d6d422f4?auto=format&fit=crop&w=1920&q=80'
     };
 
-    const state = {
-      user: null,
-      teamCode: null, // 綁定的隊伍通關令牌
-      authLoading: true,
-      isActivated: false,
-      stage: 0,
-      view: 'story',
-      hintsRevealed: 0,
-      chatTimeout: null
-    };
-
-    let teamUnsubscribe = null;
-
-    onAuthStateChanged(auth, (user) => {
-      state.user = user;
-      state.authLoading = false;
-      render();
-    });
-
-    const root = document.getElementById('root');
-
-    function render() {
-      if (state.authLoading) {
-        root.innerHTML = `<div class="min-h-screen flex flex-col items-center justify-center"><i data-lucide="sparkles" class="w-12 h-12 text-[#8d6e63] animate-spin-slow mb-4"></i><div class="text-[#d7ccc8] text-xl tracking-[0.3em] animate-pulse">靈力凝聚中...</div></div>`;
-      } else if (!state.user) {
-        root.innerHTML = renderAuthScreen();
-      } else if (!state.isActivated) {
-        root.innerHTML = renderActivationScreen();
-      } else {
-        root.innerHTML = renderGameStage();
-        if(state.view === 'story') startChatSimulation();
-      }
-      lucide.createIcons();
-    }
-
-    window.handleAuth = async (event, isLogin) => {
-      event.preventDefault();
-      const email = event.target.email.value;
-      const password = event.target.password.value;
-      const errorDiv = document.getElementById('auth-error');
-      const btn = document.getElementById('auth-btn');
-      
-      errorDiv.innerText = '';
-      btn.innerText = '法陣啟動中...';
-      btn.disabled = true;
-
-      try {
-        if (isLogin) {
-          await signInWithEmailAndPassword(auth, email, password);
+    // 聊天對話產生器
+    const renderChat = (messages) => {
+      let html = `<div class="rounded-sm overflow-hidden border-2 border-[#8d6e63] my-6 shadow-lg font-serif">
+        <div class="bg-[#2e4c3a] text-[#e8f5e9] p-3 font-bold flex items-center gap-2 border-b-2 border-[#1b2f23]">
+          <i data-lucide="sparkles" class="text-[#a5d6a7]"></i><span class="tracking-widest">通訊玉簡 (靈力傳音)</span>
+        </div>
+        <div class="p-4 h-64 overflow-y-auto flex flex-col gap-3 bg-[#fdfbf7] bg-rice-paper">`;
+      messages.forEach(msg => {
+        if (msg.sender === '您') {
+          html += `<div class="flex justify-end"><div class="max-w-[85%] rounded-lg px-4 py-3 text-[15px] bg-[#385e46] text-[#f1f8e9] rounded-tr-none border border-[#1b2f23]">${msg.text}</div></div>`;
+        } else if (msg.sender === '系統') {
+          html += `<div class="flex justify-center"><div class="rounded-lg px-4 py-1 text-sm bg-transparent text-[#5d4037] font-bold border-y border-[#d7ccc8]">${msg.text}</div></div>`;
         } else {
-          await createUserWithEmailAndPassword(auth, email, password);
+          html += `<div class="flex justify-start"><div class="max-w-[85%] rounded-lg px-4 py-3 text-[15px] bg-[#f5efe6] text-[#3e2723] rounded-tl-none border border-[#d7ccc8]"><div class="text-xs font-bold text-[#2e4c3a] mb-1 tracking-wider">${msg.sender}</div>${msg.text}</div></div>`;
         }
-      } catch (err) {
-        console.error("Auth Error:", err);
-        if (err.code === 'auth/email-already-in-use') errorDiv.innerText = '此印記已被其他修士使用。';
-        else if (err.code === 'auth/weak-password') errorDiv.innerText = '密語強度不足 (需至少6字元)。';
-        else if (err.code === 'auth/invalid-credential') errorDiv.innerText = '印記或密語錯誤。';
-        else errorDiv.innerText = '認證失敗，請檢查網路狀態。';
-        
-        btn.innerText = isLogin ? '登入仙門' : '締結契約';
-        btn.disabled = false;
-      }
+      });
+      html += `</div></div>`;
+      return html;
     };
 
-    window.toggleAuthMode = (isCurrentlyLogin) => {
-      window.isLoginMode = !isCurrentlyLogin;
-      render();
-    };
-
-    if(window.isLoginMode === undefined) window.isLoginMode = true;
-
-    function renderAuthScreen() {
-      return `
-        <div class="min-h-screen bg-cover bg-center bg-fixed flex items-center justify-center p-4 fade-in" style="background-image: url('${BACKGROUNDS.intro}')">
-          <div class="w-full max-w-md bg-[#fcf8f2] bg-[url('https://www.transparenttextures.com/patterns/rice-paper.png')] p-6 sm:p-8 rounded-sm shadow-2xl border border-[#c1a58d] relative z-10 text-[#3e2723]">
-            <div class="text-center mb-8 border-b-2 border-[#d7ccc8] pb-4">
-              <i data-lucide="shield" class="w-12 h-12 text-[#8d6e63] mx-auto mb-2"></i>
-              <h2 class="text-2xl sm:text-3xl font-black tracking-widest">軌郭山入門考驗</h2>
-              <p class="text-[#5d4037] mt-2 tracking-wider">${window.isLoginMode ? '修士登入' : '凝聚靈魂 (註冊)'}</p>
-            </div>
-            <form onsubmit="handleAuth(event, ${window.isLoginMode})" class="space-y-6">
-              <div class="flex items-center bg-[#fafafa] border-2 border-[#bcaaa4] p-3 focus-within:border-[#5d4037] rounded-sm">
-                <i data-lucide="user" class="text-[#8d6e63] mr-3 shrink-0"></i>
-                <input type="email" name="email" required placeholder="請輸入靈魂印記 (Email)" class="w-full bg-transparent text-base focus:outline-none" />
-              </div>
-              <div class="flex items-center bg-[#fafafa] border-2 border-[#bcaaa4] p-3 focus-within:border-[#5d4037] rounded-sm">
-                <i data-lucide="lock" class="text-[#8d6e63] mr-3 shrink-0"></i>
-                <input type="password" name="password" required placeholder="請輸入密語 (Password)" class="w-full bg-transparent text-base focus:outline-none" />
-              </div>
-              <div id="auth-error" class="text-[#c62828] text-sm text-center font-bold animate-pulse px-2"></div>
-              <button id="auth-btn" type="submit" class="w-full bg-[#3e2723] hover:bg-[#1b100c] text-[#f5efe6] font-bold py-4 px-4 text-xl tracking-widest shadow-lg rounded-sm active:scale-95 transition-transform">
-                ${window.isLoginMode ? '登入仙門' : '締結契約'}
-              </button>
-            </form>
-            <div class="mt-6 text-center">
-              <button onclick="toggleAuthMode(${window.isLoginMode})" class="text-[#8d6e63] hover:text-[#5d4037] underline tracking-widest text-sm p-2">
-                ${window.isLoginMode ? '尚未擁有印記？前往註冊' : '已有印記？前往登入'}
-              </button>
-            </div>
+    const STAGE_DATA = [
+      {
+        bg: BACKGROUNDS.intro, title: "軌郭山終極入門考驗", subtitle: "《 傷 健 合 壁 》",
+        content: `<div class="flex justify-center mb-6"><i data-lucide="shield" class="w-16 h-16 text-[#8d6e63]"></i></div>
+          <p>玩家將扮演前往軌郭山參與終極入門考驗的準門生，只有完成最終試練——打敗熐龍，才有資格成為軌郭山的門生。</p>
+          <p>軋郭山，現存最古老的修行之地，具千萬年歷史。乃今世五大宗門之首，當代修練之人最嚮往的最高殿堂。如若要成為此門的內門弟子，簡直是難如登天。其入門考核堪稱史上最難，古往今來，敗在這臨門一腳的修行者多不勝數。</p>
+          <div class="bg-[#fcf8f2] p-6 border-l-4 border-[#5d4037] my-8 shadow-sm">
+            <span class="font-bold text-[#8d6e63] block mb-2 tracking-widest text-lg">宗主法諭：</span>
+            「各位少俠今日蒞臨敝宗門，皆為一個目的，接受終極入門考驗。近日軌郭山的領地有妖氣散落，此是有邪祟出沒。那便作為本次考驗的試題吧。好好善用你們手上的法器以及錦囊，到底是成是敗，且看少俠能耐。」
           </div>
-        </div>`;
-    }
-
-    window.handleActivation = async (event) => {
-      event.preventDefault();
-      const code = event.target.code.value.trim().toUpperCase();
-      const errorDiv = document.getElementById('act-error');
-      const btn = document.getElementById('act-btn');
-      
-      errorDiv.innerText = '';
-      btn.innerHTML = `<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> 連結陣法中...`;
-      btn.disabled = true;
-
-      try {
-        const teamRef = doc(db, 'teams', code);
-        const teamSnap = await getDoc(teamRef);
-
-        if (teamSnap.exists()) {
-          // 將使用者加入隊伍
-          await updateDoc(teamRef, { members: arrayUnion(state.user.uid) });
-          
-          state.teamCode = code;
-          state.isActivated = true;
-
-          // 訂閱隊伍進度變更 (即時同步)
-          teamUnsubscribe = onSnapshot(teamRef, (docSnap) => {
-            if(docSnap.exists()){
-              const data = docSnap.data();
-              if(data.stage !== undefined && data.stage !== state.stage) {
-                // 如果資料庫的關卡改變，自動跳轉並重新渲染
-                state.stage = data.stage;
-                state.view = 'story';
-                state.hintsRevealed = 0;
-                clearTimeout(state.chatTimeout);
-                render();
-                window.scrollTo(0, 0);
-              }
-            }
-          });
-          
-          render();
-        } else {
-          errorDiv.innerText = '此通關令牌不存在，請向長老確認！';
-        }
-      } catch (err) {
-        console.error("Activation Error:", err);
-        errorDiv.innerText = '網路波動異常，無法連接陣法。';
-      }
-      
-      btn.innerHTML = `解開陣法 <i data-lucide="sparkles" class="w-5 h-5"></i>`;
-      btn.disabled = false;
-      lucide.createIcons();
-    };
-
-    window.logout = () => {
-      if(teamUnsubscribe) teamUnsubscribe();
-      signOut(auth);
-    };
-
-    function renderActivationScreen() {
-      return `
-        <div class="min-h-screen bg-cover bg-center bg-fixed flex items-center justify-center p-4 fade-in" style="background-image: url('${BACKGROUNDS.m1}')">
-          <div class="w-full max-w-md bg-[#fcf8f2] bg-[url('https://www.transparenttextures.com/patterns/rice-paper.png')] p-6 sm:p-8 rounded-sm shadow-2xl border border-[#c1a58d] relative z-10 text-center">
-            <button onclick="logout()" class="absolute top-4 right-4 text-[#8d6e63] hover:text-[#c62828] flex items-center gap-1 text-sm"><i data-lucide="log-out" class="w-4 h-4"></i> 退避</button>
-            <i data-lucide="key-round" class="w-12 h-12 text-[#8d6e63] mx-auto mb-4 mt-4"></i>
-            <h2 class="text-2xl sm:text-3xl font-black text-[#3e2723] tracking-widest mb-2">驗證通關令牌</h2>
-            <p class="text-[#5d4037] mb-8 text-sm leading-relaxed">請輸入長老派發的通關令牌以開啟試煉。<br/>(同令牌修士將共享通關進度)</p>
-            <form onsubmit="handleActivation(event)" class="space-y-6">
-              <input type="text" name="code" required placeholder="請輸入通關令牌..." class="w-full bg-[#fafafa] text-[#3e2723] border-2 border-[#bcaaa4] p-4 text-center text-xl tracking-wider focus:outline-none focus:border-[#5d4037] uppercase rounded-sm" />
-              <div id="act-error" class="text-[#c62828] text-sm font-bold animate-pulse"></div>
-              <button id="act-btn" type="submit" class="w-full bg-[#2e4c3a] hover:bg-[#1b2f23] text-[#f1f8e9] font-bold py-4 px-4 text-xl tracking-widest shadow-lg rounded-sm active:scale-95 transition-transform flex items-center justify-center gap-2">
-                解開陣法 <i data-lucide="sparkles" class="w-5 h-5"></i>
-              </button>
-            </form>
+          <div class="text-center mt-10"><button type="button" onclick="window.nextStage()" class="bg-[#8d6e63] hover:bg-[#5d4037] text-[#f5efe6] text-xl font-bold py-4 px-12 tracking-[0.3em] shadow-lg border border-[#4e342e] active:scale-95 transition-transform touch-manipulation">踏上修行之路</button></div>`
+      },
+      {
+        bg: BACKGROUNDS.m1, title: "第一篇：星圖指引",
+        content: `<p>宗主離去後，你獲得了一張極為複雜的星圖，正當你一頭霧水時，懷中的通訊玉簡震動了起來。</p>
+          ${renderChat([
+            { sender: '系統', text: '叮🔔 您收到一條新訊息' },
+            { sender: '天地', text: '嘿！你現在是不是一頭霧水呢？那群老頭子還是喜歡那樣故弄玄虛。' },
+            { sender: '您', text: '閣下是？' },
+            { sender: '天地', text: '喔，不好意思，唐突了。我應該算是你們的師兄。我姓謝，可以直接以我本名天地稱呼我。' },
+            { sender: '您', text: '我要獲取對抗妖獸的武器，當務之急要知道它們的所在地，但我手上只有星圖，毫無頭緒，敢問師兄可否指點？' },
+            { sender: '天地', text: '好，最近活躍的妖獸就只有熐龍。古時航海士倚靠星宿辨別方向，換言之，星圖就是地圖。' },
+            { sender: '天地', text: '我讓神鳥帶了一些用具給你們，應該有所幫助。' },
+            { sender: '您', text: '謝謝師兄！' }
+          ])}
+          <p class="italic text-[#5d4037] text-center my-6">一隻神鳥憑空飛來，丟下幾張標有箭頭的透明卡片，與一張寫著地點的底圖。</p>`,
+        customPuzzle: true 
+      },
+      {
+        bg: BACKGROUNDS.m2, title: "第二篇：馬鞍山體育館",
+        content: `<p>這裏是一座灰色的摩登建築，琉璃門感受到你的法力自動為你敞開。你看到一塊石碑，上面刻著此地的歷史。而在古老的壁畫前，站著一個人。</p>
+          <div class="bg-[#fcf8f2] p-6 border-2 border-[#d7ccc8] my-6">
+            <p class="mb-4"><span class="text-[#5d4037] font-bold block mb-1">劍仙追隨者：</span>「這位少俠！據說百萬年前有一位劍仙在這幅壁畫中留下訊息，但我在此參悟數百年，還是看不出個所以然。」</p>
           </div>
-        </div>`;
-    }
-
-    window.nextStage = async () => {
-      const next = state.stage + 1;
-      // 樂觀更新 UI (讓使用者不用等網路回傳)
-      state.stage = next;
-      state.view = 'story';
-      state.hintsRevealed = 0;
-      clearTimeout(state.chatTimeout);
-      window.scrollTo(0, 0);
-      render();
-
-      // 同步到 Firestore，讓其他隊員也跳轉
-      if(state.teamCode) {
-        try {
-          await updateDoc(doc(db, 'teams', state.teamCode), { stage: next });
-        } catch (e) {
-          console.error("進度同步失敗", e);
-        }
+          <p>你忽然想起自己開始修行前獲得過兩張市井相片，似乎與壁畫有幾分關連。你決定找出相片上的錯誤，解讀劍仙留下的密語。</p>`,
+        puzzle: { q: "請找出壁畫所隱藏的信息 (請輸入英文)。", h1: "市面上充斥着假資訊，果然只有官方消息才是真實的。", h2: "我們宗門，只求第一，其餘的都是垃圾。將錯處化作英文字，取其首字母。", validator: (val) => val.toLowerCase().replace(/\s+/g, '') === 'dragonslayer' }
+      },
+      {
+        bg: BACKGROUNDS.m3, title: "第三篇：紅瑪瑙謎陣",
+        content: `<div class="text-center mb-8 bg-[#f1f8e9] p-6 border border-[#a5d6a7]">
+            <i data-lucide="sword" class="w-12 h-12 text-[#385e46] mx-auto mb-4"></i>
+            <p class="text-xl font-bold text-[#2e4c3a]">劍仙追隨者恍然大悟，將「神劍」交託於你！</p>
+          </div>
+          <p>按照星圖指引，你走到一座園林當中。忽然怪風吹過，濃煙瀰漫，隨着煙霧消散，你看到了一座以紅瑪瑙為底、大理岩為牆的巨大迷宮。</p>
+          ${renderChat([
+            { sender: '系統', text: '叮🔔 您收到一條新訊息' },
+            { sender: '天地', text: '噢，看來你進入了迷陣。不過也不算是壞事。迷陣當然是用來封印神獸，或者埋藏寶物的！快去破解吧。' },
+            { sender: '天地', text: '別說我不提醒你，只有一條正確路線，有些瑪瑙石下有陷阱，踩上去便會失去所有修為。祝你好運。' }
+          ])}`,
+        puzzle: { q: "請聽從領航錄音，刪除經過的字，找出打破謎陣的口令 (八個字，包含標點符號)。", h1: "圖上的樹有甚麼特別之處呢？", h2: "好馬不吃回頭草，踩過的就不要呢 / 走過的，我們就不要了。", validator: (val) => val.replace(/\s+/g, '').includes('上知天文') && val.replace(/\s+/g, '').includes('下知地理') }
+      },
+      {
+        bg: BACKGROUNDS.m4, title: "第四篇：軌郭石礦場",
+        content: `<div class="text-center mb-8 bg-[#e1f5fe] p-6 border border-[#81d4fa]">
+            <div class="w-16 h-16 rounded-full bg-[#81d4fa] shadow-[0_0_20px_#29b6f6] mx-auto mb-4 flex items-center justify-center border-2 border-white"><i data-lucide="sparkles" class="text-white"></i></div>
+            <p class="text-xl font-bold text-[#0277bd]">口令正確！陣法破除，恭喜獲得「水晶球」。</p>
+          </div>
+          <p>你來到一個舊礦場。以你目前的武功，尚未能夠打敗熐龍，你深知需要這裡特產的「附魔玉石」來大幅提升戰鬥力。</p>
+          <p>地上散落著一個古老的指南針與幾張殘破的壁畫點陣圖。</p>`,
+        puzzle: { q: "透過點與線的遊戲排列文字，找出打破玉石封印的口令 (請輸入英文單字)。", h1: "走路要看路，指南針必可以指引你正確的方向。", h2: "開採玉石，怎麼能不用工具呢？", validator: (val) => val.toLowerCase().replace(/\s+/g, '') === 'magiccrystal' }
+      },
+      {
+        bg: BACKGROUNDS.m5, title: "第五篇：熐龍巢穴",
+        content: `<div class="text-center mb-8 bg-[#e8f5e9] p-6 border border-[#a5d6a7]">
+            <div class="w-16 h-16 rounded-full bg-[#66bb6a] shadow-[0_0_20px_#43a047] mx-auto mb-4 flex items-center justify-center border-2 border-white"><i data-lucide="shield" class="text-white"></i></div>
+            <p class="text-xl font-bold text-[#2e7d32]">封印解除！恭喜獲得「附魔玉石」。</p>
+          </div>
+          <p>剛才獲得的水晶球發出微弱的光芒，指引你抵達了充滿狂暴妖氣的熐龍巢穴！但在巢穴入口，你看到了一群守護獸。</p>
+          ${renderChat([
+            { sender: '系統', text: '【抵達熐龍巢穴】' },
+            { sender: '天地', text: '啊！這裏我很熟悉，正正就是熐龍的老巢！我們趕快過去吧！' },
+            { sender: '您', text: '師兄，為什麼有這麼多動物在這裏？' },
+            { sender: '天地', text: '他們是守護獸，能夠削弱妖獸。你可曾聽過一首詩？' },
+            { sender: '天地', text: '天臨高貴仙，湖中潔白舞。鵝群泛水波，美境散羽毛。' },
+            { sender: '您', text: '原來關鍵神獸是天鵝！但牠似乎被陣法封印了。' },
+            { sender: '天地', text: '綠茵匆匆，萬物生長。紅日當空，寸土不生。相生相剋，正正負負。加加減減，由是千古。' }
+          ])}`,
+        puzzle: { q: "請按照五行對照表與寶石數量，依次運算解除天鵝的封印 (請輸入數字密碼)。", h1: "雞有雞冠，看來天鵝也不服輸呢 (注意頭上的寶石)。", h2: "五行之規，依箭行事。", mode: "numeric", validator: (val) => val.trim() === '123' }
+      },
+      {
+        bg: BACKGROUNDS.boss, title: "最終考驗：血戰熐龍",
+        content: `<p class="text-xl font-bold text-[#c62828] mb-4">只聽見一聲鳴叫，天鵝展開雙翅，施展法術，妖氣顯著減弱！</p>
+          <p>你與其他準門生緩慢向熐龍的巢穴深處進發。然而，你們謹慎的舉動還是引起了熐龍的注意！一陣腥風血雨襲來，熐龍發動攻擊，你們瞬間落於下風，眾人皆身負重傷。</p>
+          <div class="bg-[#fcf8f2] p-6 border-l-4 border-[#c62828] my-8 shadow-sm">
+            <span class="font-bold text-[#b71c1c] block mb-2 tracking-widest text-lg">神秘場外傳音：</span>
+            「哎呀！你們怎麼變成這種慘況了？你們這樣各有各打的是要怎樣打敗熐龍？天鵝只是把它削弱，以你們這些毛頭小子的能力，是要通力合作才會有勝算！我現在為你們施法痊癒，繼續作戰！」
+          </div>`,
+        customBoss: true
+      },
+      {
+        bg: BACKGROUNDS.choice, title: "結語：羽化坡前",
+        content: `<div class="text-center mb-8 border-b border-[#d7ccc8] pb-8">
+            <i data-lucide="sparkles" class="w-16 h-16 text-[#f57f17] mx-auto mb-4 animate-pulse"></i>
+            <h2 class="text-2xl font-bold text-[#e65100] mb-2">熐龍轟然倒下！</h2>
+            <p class="text-[#5d4037] text-lg">眾人的法力聚集成巨大的光球，將惡龍擊斃。你獲得了極品至寶：<strong class="text-[#d84315] text-xl">龍鱗</strong>。</p>
+          </div>
+          <p>你和同伴走出巢穴，發現有一個身影在此等候。你總算見到了他的廬山真面目——一直以玉簡傳音相助的師兄<strong>謝天地</strong>。</p>
+          <p>你們來到「羽化坡」前，只要穿過這裡，就能成為正式弟子。但你發現謝天地坐在木輪椅上，徘徊不前。</p>
+          <div class="bg-[#efebe9] p-6 border-2 border-[#d7ccc8] my-6 space-y-4">
+            <p><span class="text-[#3e2723] font-bold">謝天地苦笑：</span>「我並不是正式的入門弟子，因為這羽化坡表面凹凸不平，我的輪椅上不去。似乎只有龍鱗才能填平它...」</p>
+            <p><span class="text-[#8d6e63] font-bold">旁人驚呼：</span>「龍鱗服用可增加五千年修為，百病不侵！用來修地板？簡直是暴殄天物！」</p>
+          </div>
+          <div class="text-center mt-12 space-y-6">
+            <p class="text-xl font-bold text-[#3e2723]">你想起這一路上受到的照顧... 你要如何抉擇？</p>
+            <div class="flex flex-col sm:flex-row gap-6 justify-center">
+              <button type="button" onclick="window.makeChoice(8)" class="bg-[#2e4c3a] hover:bg-[#1b2f23] text-[#f1f8e9] font-bold py-4 px-8 text-lg tracking-widest shadow-lg active:scale-95 transition-transform touch-manipulation">捨棄修為，修補斜坡</button>
+              <button type="button" onclick="window.makeChoice(9)" class="bg-[#5d4037] hover:bg-[#3e2723] text-[#f5efe6] font-bold py-4 px-8 text-lg tracking-widest shadow-lg active:scale-95 transition-transform touch-manipulation">保留龍鱗，獨自登頂</button>
+            </div>
+          </div>`
+      },
+      {
+        bg: BACKGROUNDS.good, title: "大結局：傷健合壁",
+        content: `<div class="text-center py-10 space-y-8 animate-in fade-in">
+            <div class="w-24 h-24 rounded-full bg-[#f1f8e9] border-4 border-[#2e4c3a] mx-auto flex items-center justify-center shadow-2xl"><i data-lucide="map" class="w-12 h-12 text-[#2e4c3a]"></i></div>
+            <p class="text-xl leading-loose">你把鱗片放在了羽化坡上，一整片的凹凸瞬間「夷為平地」。<br/>其他弟子見狀，也紛紛效仿。</p>
+            <p class="text-xl leading-loose">謝天地推動手上的輪椅，一寸一寸地攀登着。<br/>他低著頭，口中不停地重複着「謝謝，謝謝⋯⋯」</p>
+            <div class="text-3xl font-black text-[#2e4c3a] mt-12 tracking-[0.3em] border-y-2 border-[#2e4c3a] py-6">「從今天起，你們便是軌郭山的入門弟子！」</div>
+            <button type="button" onclick="window.openCamera('good')" class="mt-8 bg-[#2e4c3a] text-white px-8 py-4 rounded-full font-bold shadow-lg hover:bg-[#1b2f23] active:scale-95 transition flex items-center justify-center gap-2 mx-auto touch-manipulation w-full max-w-xs"><i data-lucide="camera"></i> 拍攝紀念照</button>
+          </div>`
+      },
+      {
+        bg: BACKGROUNDS.bad, title: "大結局：獨登大道",
+        content: `<div class="text-center py-10 space-y-8 animate-in fade-in">
+            <div class="w-24 h-24 rounded-full bg-[#fcf8f2] border-4 border-[#5d4037] mx-auto flex items-center justify-center shadow-2xl"><i data-lucide="scroll" class="w-12 h-12 text-[#5d4037]"></i></div>
+            <p class="text-xl leading-loose">修仙之路本就殘酷，你選擇保留珍貴的龍鱗。<br/>服下後，你修為大增，一步登天。</p>
+            <p class="text-xl leading-loose">你獨自踏上凹凸不平的羽化坡，成為了軌郭山的耀眼新星。<br/>但在無數個修煉的夜晚，你偶爾會想起山門外，<br/>那個坐在輪椅上落寞的身影。</p>
+            <div class="text-3xl font-black text-[#5d4037] mt-12 tracking-[0.3em] border-y-2 border-[#5d4037] py-6">～ 考驗結束 ～</div>
+            <button type="button" onclick="window.openCamera('bad')" class="mt-8 bg-[#5d4037] text-white px-8 py-4 rounded-full font-bold shadow-lg hover:bg-[#3e2723] active:scale-95 transition flex items-center justify-center gap-2 mx-auto touch-manipulation w-full max-w-xs"><i data-lucide="camera"></i> 拍攝紀念照</button>
+          </div>`
       }
-    };
-
-    window.goToStage = async (s) => {
-      state.stage = s;
-      state.view = 'story';
-      state.hintsRevealed = 0;
-      clearTimeout(state.chatTimeout);
-      window.scrollTo(0, 0);
-      render();
-      if(state.teamCode) await updateDoc(doc(db, 'teams', state.teamCode), { stage: s });
-    };
+    ];
 
     window.toggleView = (viewName) => { window.scrollTo(0, 0); state.view = viewName; render(); };
     window.revealHint = (level) => { state.hintsRevealed = Math.max(state.hintsRevealed, level); render(); };
 
-    window.checkPuzzle = (event, validatorStr) => {
-      event.preventDefault();
+    // 解決作用域問題的註冊/登入切換按鈕
+    window.toggleAuthMode = () => {
+      state.authMode = state.authMode === 'login' ? 'register' : 'login';
+      state.authError = '';
+      render();
+    };
+
+    // 推進關卡 (更新 Firestore)
+    window.nextStage = async () => {
+      window.scrollTo(0, 0);
+      state.view = 'story';
+      state.hintsRevealed = 0;
+      if (state.teamCode) {
+        await updateDoc(doc(db, "teams", state.teamCode), { stage: state.stage + 1 });
+      } else {
+        state.stage++;
+        render();
+      }
+    };
+
+    window.makeChoice = async (endStage) => {
+      window.scrollTo(0, 0);
+      if (state.teamCode) {
+        await updateDoc(doc(db, "teams", state.teamCode), { stage: endStage });
+      } else {
+        state.stage = endStage;
+        render();
+      }
+    };
+
+    // 解決迴圈：透過索引呼叫 Validator
+    window.checkPuzzle = async (event, stageIdx) => {
+      event.preventDefault(); // 阻擋表單預設重整行為
       const val = event.target.answer.value;
       const errorDiv = document.getElementById('puzzle-error');
-      const isValid = eval(`(${validatorStr})`)(val);
+      const isValid = STAGE_DATA[stageIdx].puzzle.validator(val);
       if(isValid) {
         errorDiv.innerText = '';
-        window.nextStage();
+        await window.nextStage();
       } else {
         errorDiv.innerText = '陣法排斥，答案有誤，請重新凝神思考。';
       }
     };
 
-    // 關卡資料定義 (省略重複文字，結構與之前相同)
-    const STAGE_DATA = [
-      {
-        bg: BACKGROUNDS.intro, title: "軌郭山終極入門考驗", subtitle: "《 傷 健 合 壁 》",
-        content: `<div class="flex justify-center mb-6"><i data-lucide="shield" class="w-16 h-16 text-[#8d6e63]"></i></div><p>玩家將扮演前往軌郭山參與終極入門考驗的準門生，只有完成最終試練——打敗熐龍，才有資格成為軌郭山的門生。</p><p>軋郭山，現存最古老的修行之地。其入門考核堪稱史上最難。</p><div class="bg-[#fcf8f2] p-6 border-l-4 border-[#5d4037] my-8 shadow-sm text-sm sm:text-base"><span class="font-bold text-[#8d6e63] block mb-2">宗主法諭：</span>「近日領地有妖氣散落，此是有邪祟出沒，那便作為本次考驗的試題吧。好好善用你們手上的法器以及錦囊。」</div><div class="text-center mt-10"><button onclick="nextStage()" class="w-full sm:w-auto bg-[#8d6e63] hover:bg-[#5d4037] text-[#f5efe6] text-xl font-bold py-4 px-12 tracking-[0.3em] shadow-lg rounded-sm active:scale-95">踏上修行之路</button></div>`
-      },
-      {
-        bg: BACKGROUNDS.m1, title: "第一篇：星圖指引",
-        content: `<p>宗主離去後，你獲得了一張極為複雜的星圖，正當你一頭霧水時，懷中的通訊玉簡震動了起來。</p>`,
-        chat: [
-          { sender: '系統', text: '叮🔔 您收到一條新訊息' },
-          { sender: '天地', text: '嘿！你現在是不是一頭霧水呢？' },
-          { sender: '您', text: '閣下是？' },
-          { sender: '天地', text: '我是你們的師兄，姓謝，叫我天地即可。古時航海士倚靠星宿辨別方向，換言之，星圖就是地圖。我讓神鳥帶了一些用具給你們。' }
-        ],
-        contentAfterChat: `<p class="italic text-[#5d4037] text-center my-6">一隻神鳥憑空飛來，丟下幾張標有箭頭的透明卡片，與底圖。</p>`,
-        puzzle: { q: "請找出獲取打敗熐龍寶物的「三個地點」。", h1: "顏色點必需相對應。", h2: "透明卡片要疊在地圖上才能顯現玄機。", validator: "val => val.replace(/\\s+/g, '').includes('體育館') && val.replace(/\\s+/g, '').includes('迷宮') && val.replace(/\\s+/g, '').includes('礦石場')" }
-      },
-      {
-        bg: BACKGROUNDS.m2, title: "第二篇：馬鞍山體育館",
-        content: `<p>這裏是一座灰色的摩登建築。在古老的壁畫前，站著一個人。</p><div class="bg-[#fcf8f2] p-6 border-2 border-[#d7ccc8] my-6"><p><span class="text-[#5d4037] font-bold block mb-1">劍仙追隨者：</span>「這位少俠！據說百萬年前有一位劍仙在這幅壁畫中留下訊息，但我參悟數百年，還是看不出個所以然。」</p></div><p>你決定找出相片上的錯誤，解讀劍仙留下的密語。</p>`,
-        puzzle: { q: "請找出壁畫所隱藏的信息 (請輸入英文)。", h1: "市面上充斥着假資訊，果然只有官方消息才是真實的。", h2: "將錯處化作英文字，取其首字母。", validator: "val => val.toLowerCase().replace(/\\s+/g, '') === 'dragonslayer'" }
-      },
-      {
-        bg: BACKGROUNDS.m3, title: "第三篇：紅瑪瑙謎陣",
-        content: `<div class="text-center mb-8 bg-[#f1f8e9] p-6 rounded-sm border border-[#a5d6a7]"><i data-lucide="sword" class="w-12 h-12 text-[#385e46] mx-auto mb-4"></i><p class="text-xl font-bold text-[#2e4c3a]">恭喜獲得「神劍」！</p></div><p>你走到一座園林當中，看到了一座以紅瑪瑙為底、大理岩為牆的巨大迷宮。</p>`,
-        chat: [
-          { sender: '系統', text: '叮🔔 您收到一條新訊息' },
-          { sender: '天地', text: '噢，看來你進入了迷陣。迷陣是用來封印神獸或埋藏寶物的！只有一條正確路線，瑪瑙石下有陷阱，祝你好運。' }
-        ],
-        puzzle: { q: "刪除經過的字，找出打破謎陣的口令 (八個字)。", h1: "圖上的樹有甚麼特別之處呢？", h2: "好馬不吃回頭草，走過的就不要了。", validator: "val => val.replace(/\\s+/g, '').includes('上知天文') && val.replace(/\\s+/g, '').includes('下知地理')" }
-      },
-      {
-        bg: BACKGROUNDS.m4, title: "第四篇：軌郭石礦場",
-        content: `<div class="text-center mb-8 bg-[#e1f5fe] p-6 rounded-sm border border-[#81d4fa]"><p class="text-xl font-bold text-[#0277bd]">口令正確！陣法破除，恭喜獲得「水晶球」。</p></div><p>來到舊礦場，你需要這裡特產的「附魔玉石」來大幅提升戰鬥力。地上散落著一個古老的指南針與殘破的點陣圖。</p>`,
-        puzzle: { q: "透過點與線的遊戲，找出打破玉石封印的口令 (英文單字)。", h1: "指南針必可以指引你正確的方向。", h2: "開採玉石，怎麼能不用工具呢？", validator: "val => val.toLowerCase().replace(/\\s+/g, '') === 'magiccrystal'" }
-      },
-      {
-        bg: BACKGROUNDS.m5, title: "第五篇：熐龍巢穴",
-        content: `<div class="text-center mb-8 bg-[#e8f5e9] p-6 rounded-sm border border-[#a5d6a7]"><p class="text-xl font-bold text-[#2e7d32]">封印解除！恭喜獲得「附魔玉石」。</p></div><p>水晶球指引你抵達了充滿狂暴妖氣的熐龍巢穴！但在巢穴入口，有一群守護獸。</p>`,
-        chat: [
-          { sender: '系統', text: '【抵達熐龍巢穴】' },
-          { sender: '天地', text: '他們是守護獸，天臨高貴仙，湖中潔白舞。鵝群泛水波，美境散羽毛。' },
-          { sender: '您', text: '原來關鍵是天鵝！但牠被封印了。' },
-          { sender: '天地', text: '綠茵匆匆，萬物生長。紅日當空，寸土不生。相生相剋，加加減減。' }
-        ],
-        puzzle: { q: "按照五行對照表與寶石數量，運算解除天鵝的封印 (數字)。", h1: "雞有雞冠，看來天鵝也不服輸呢 (注意頭上的寶石)。", h2: "五行之規，依箭行事。", mode: "numeric", validator: "val => val.trim() === '123'" }
-      },
-      {
-        bg: BACKGROUNDS.boss, title: "最終考驗：血戰熐龍",
-        content: `<p class="text-xl font-bold text-[#c62828] mb-4">天鵝展開雙翅，妖氣顯著減弱！</p><p>然而，熐龍發動攻擊，你們瞬間落於下風，眾人皆身負重傷。</p><div class="bg-[#fcf8f2] p-6 border-l-4 border-[#c62828] my-8 shadow-sm"><span class="font-bold text-[#b71c1c] block mb-2 text-lg">神秘場外傳音：</span>「你們這樣各有各打的是要怎樣打敗熐龍？是要通力合作才會有勝算！我現在為你們施法痊癒，繼續作戰！」</div>`,
-        puzzleHtml: `<div class="bg-[#fcf8f2] p-8 rounded-sm border border-[#d7ccc8] text-center"><h3 class="text-2xl font-bold text-[#c62828] mb-6 tracking-widest">匯聚眾人之力</h3><p class="text-[#3e2723] mb-8 text-lg">你願意信任同伴，貢獻法力嗎？(注入 1 至 10 點法力)</p><form onsubmit="event.preventDefault(); const v=parseInt(event.target.mana.value); if(v>=1 && v<=10) nextStage(); else document.getElementById('mana-err').innerText='請準確注入 1 到 10 之間的數字！';"><input name="mana" type="number" min="1" max="10" required placeholder="1-10" class="w-full max-w-[200px] mx-auto block bg-white text-[#c62828] border-2 border-[#ef9a9a] p-4 text-center text-2xl font-bold mb-4 focus:outline-none focus:border-[#c62828]" /><div id="mana-err" class="text-[#c62828] text-sm font-bold mb-4 animate-pulse"></div><button type="submit" class="w-full bg-[#c62828] hover:bg-[#b71c1c] text-white font-bold py-4 px-6 text-xl tracking-widest active:scale-95">獻出法力，破滅龍魂！</button></form></div>`
-      },
-      {
-        bg: BACKGROUNDS.choice, title: "結語：羽化坡前",
-        content: `<div class="text-center mb-8 border-b border-[#d7ccc8] pb-8"><i data-lucide="sparkles" class="w-16 h-16 text-[#f57f17] mx-auto mb-4 animate-pulse"></i><h2 class="text-2xl font-bold text-[#e65100] mb-2">熐龍轟然倒下！</h2><p class="text-[#5d4037] text-lg">獲得了極品至寶：<strong class="text-[#d84315] text-xl">龍鱗</strong>。</p></div><p>你們來到「羽化坡」前，只要穿過這裡，就能成為正式弟子。但你發現師兄謝天地坐在木輪椅上，徘徊不前。</p><div class="bg-[#efebe9] p-6 border-2 border-[#d7ccc8] my-6 space-y-4"><p><span class="text-[#3e2723] font-bold">謝天地苦笑：</span>「因為這羽化坡表面凹凸不平，我的輪椅上不去。似乎只有龍鱗才能填平它...」</p><p><span class="text-[#8d6e63] font-bold">旁人驚呼：</span>「龍鱗服用可增加五千年修為！用來修地板？簡直是暴殄天物！」</p></div><div class="text-center mt-12 space-y-6"><p class="text-xl font-bold text-[#3e2723]">你想起這一路上受到的照顧... 你要如何抉擇？</p><div class="flex flex-col sm:flex-row gap-4 justify-center mt-4"><button onclick="goToStage(8)" class="w-full sm:w-auto bg-[#2e4c3a] hover:bg-[#1b2f23] text-[#f1f8e9] font-bold py-4 px-8 tracking-widest shadow-lg active:scale-95">捨棄修為，修補斜坡</button><button onclick="goToStage(9)" class="w-full sm:w-auto bg-[#5d4037] hover:bg-[#3e2723] text-[#f5efe6] font-bold py-4 px-8 tracking-widest shadow-lg active:scale-95">保留龍鱗，獨自登頂</button></div></div>`
-      },
-      {
-        bg: BACKGROUNDS.good, title: "大結局：傷健合壁",
-        content: `<div class="text-center py-10 space-y-8"><div class="w-24 h-24 rounded-full bg-[#f1f8e9] border-4 border-[#2e4c3a] mx-auto flex items-center justify-center shadow-2xl"><i data-lucide="map" class="w-12 h-12 text-[#2e4c3a]"></i></div><p class="text-xl leading-loose">你把鱗片放在了羽化坡上，一整片的凹凸瞬間「夷為平地」。</p><p class="text-xl leading-loose">謝天地推動手上的輪椅，一寸一寸地攀登着，口中不停地重複着「謝謝，謝謝⋯⋯」</p><div class="text-2xl sm:text-3xl font-black text-[#2e4c3a] mt-12 tracking-widest border-y-2 border-[#2e4c3a] py-6">「從今天起，你們便是軌郭山的入門弟子！」</div><button onclick="openCamera()" class="mt-8 bg-[#2e4c3a] text-white px-8 py-4 text-xl tracking-widest shadow-lg flex items-center justify-center gap-3 mx-auto active:scale-95"><i data-lucide="camera"></i> 拍下紀念照</button></div>`
-      },
-      {
-        bg: BACKGROUNDS.bad, title: "大結局：獨登大道",
-        content: `<div class="text-center py-10 space-y-8"><div class="w-24 h-24 rounded-full bg-[#fcf8f2] border-4 border-[#5d4037] mx-auto flex items-center justify-center shadow-2xl"><i data-lucide="scroll" class="w-12 h-12 text-[#5d4037]"></i></div><p class="text-xl leading-loose">修仙之路本就殘酷，你選擇保留珍貴的龍鱗。服下後，你修為大增，一步登天。</p><p class="text-xl leading-loose">你獨自踏上凹凸不平的羽化坡。但在無數個修煉的夜晚，你偶爾會想起山門外，那個坐在輪椅上落寞的身影。</p><div class="text-2xl sm:text-3xl font-black text-[#5d4037] mt-12 tracking-widest border-y-2 border-[#5d4037] py-6">～ 考驗結束 ～</div><button onclick="openCamera()" class="mt-8 bg-[#5d4037] text-white px-8 py-4 text-xl tracking-widest shadow-lg flex items-center justify-center gap-3 mx-auto active:scale-95"><i data-lucide="camera"></i> 拍下紀念照</button></div>`
+    window.checkMission1 = async (event) => {
+      event.preventDefault(); // 阻擋表單預設重整行為
+      const r = event.target.red.value.replace(/\s+/g, '');
+      const b = event.target.blue.value.replace(/\s+/g, '');
+      const g = event.target.green.value.replace(/\s+/g, '');
+      const err = document.getElementById('puzzle-error-m1');
+      if(r.includes('體育館') && b.includes('迷宮') && g.includes('礦石場')) {
+        err.innerText = '';
+        await window.nextStage();
+      } else {
+        err.innerText = '陣法排斥，請確認三個地點是否正確對應顏色。';
       }
-    ];
+    };
 
-    function renderGameStage() {
+    window.fightBoss = async (event) => {
+      event.preventDefault(); // 阻擋表單預設重整行為
+      const val = parseInt(event.target.mana.value);
+      if (val >= 1 && val <= 10) await window.nextStage();
+      else alert("陣法不穩！請準確注入 1 到 10 之間的數字！");
+    };
+
+    // 啟動團隊監聽器
+    const setupTeamListener = (code) => {
+      if(teamUnsubscribe) teamUnsubscribe();
+      teamUnsubscribe = onSnapshot(doc(db, "teams", code), (docSnap) => {
+        if(docSnap.exists()) {
+          state.stage = docSnap.data().stage || 0;
+          state.view = 'story'; state.hintsRevealed = 0;
+          render();
+        }
+      });
+    };
+
+    // 自動登入驗證
+    onAuthStateChanged(auth, async (currentUser) => {
+      state.user = currentUser;
+      state.authLoading = false;
+      if (currentUser) {
+        try {
+          const q = query(collection(db, "teams"), where("members", "array-contains", currentUser.email));
+          const querySnapshot = await getDocs(q);
+          if (!querySnapshot.empty) {
+            const teamDoc = querySnapshot.docs[0];
+            state.teamCode = teamDoc.id;
+            state.isActivated = true;
+            setupTeamListener(teamDoc.id);
+            return;
+          }
+        } catch(e) { console.error("自動恢復進度失敗:", e); }
+      }
+      render();
+    });
+
+    window.handleAuth = async (event) => {
+      event.preventDefault();
+      const email = event.target.email.value;
+      const pwd = event.target.password.value;
+      state.authError = ''; render();
+      try {
+        if(state.authMode === 'login') await signInWithEmailAndPassword(auth, email, pwd);
+        else await createUserWithEmailAndPassword(auth, email, pwd);
+      } catch(err) {
+        state.authError = err.code === 'auth/email-already-in-use' ? '此信箱已被使用' : '帳號或密碼錯誤';
+        render();
+      }
+    };
+
+    window.handleActivation = async (event) => {
+      event.preventDefault();
+      const code = event.target.code.value.trim().toUpperCase();
+      state.actError = ''; render();
+      try {
+        const docRef = doc(db, "teams", code);
+        const docSnap = await getDoc(docRef);
+        if(docSnap.exists()) {
+          await updateDoc(docRef, { members: arrayUnion(state.user.email) });
+          state.teamCode = code;
+          state.isActivated = true;
+          setupTeamListener(code);
+        } else if(code === 'MOS2026') {
+          state.isActivated = true; render();
+        } else {
+          state.actError = '通關令牌無效！'; render();
+        }
+      } catch(err) { state.actError = '資料庫連線失敗，請稍後再試。'; render(); }
+    };
+
+    window.logout = () => { signOut(auth); };
+
+    // 相機功能
+    window.openCamera = async (type) => {
+      const modal = document.getElementById('camera-modal');
+      const video = document.getElementById('camera-video');
+      modal.classList.remove('hidden');
+      try {
+        state.cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+        video.srcObject = state.cameraStream;
+        video.play();
+      } catch(err) { alert('無法存取相機，請確認瀏覽器權限。'); window.closeCamera(); }
+    };
+
+    window.closeCamera = () => {
+      const modal = document.getElementById('camera-modal');
+      modal.classList.add('hidden');
+      if(state.cameraStream) { state.cameraStream.getTracks().forEach(track => track.stop()); state.cameraStream = null; }
+      document.getElementById('camera-preview').classList.add('hidden');
+      document.getElementById('camera-video').classList.remove('hidden');
+      document.getElementById('capture-btn').classList.remove('hidden');
+      document.getElementById('share-btn').classList.add('hidden');
+    };
+
+    window.takeSnapshot = () => {
+      const video = document.getElementById('camera-video');
+      const canvas = document.getElementById('camera-canvas');
+      const preview = document.getElementById('camera-preview');
+      const frame = document.getElementById('camera-frame');
+      
+      canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
+
+      preview.src = canvas.toDataURL('image/jpeg');
+      video.classList.add('hidden'); preview.classList.remove('hidden');
+      document.getElementById('capture-btn').classList.add('hidden');
+      document.getElementById('share-btn').classList.remove('hidden');
+    };
+
+    window.sharePhoto = async () => {
+      const canvas = document.getElementById('camera-canvas');
+      canvas.toBlob(async (blob) => {
+        const file = new File([blob], 'mos-puzzle-hunt.jpg', { type: 'image/jpeg' });
+        if(navigator.share) {
+          try { await navigator.share({ title: '軌郭山考驗通關！', text: '我已成功完成軌郭山入門考驗！', files: [file] }); }
+          catch(err) { console.log(err); }
+        } else {
+          const a = document.createElement('a');
+          a.href = canvas.toDataURL('image/jpeg'); a.download = 'mos-puzzle-hunt.jpg'; a.click();
+        }
+      });
+    };
+
+    const render = () => {
+      const appDiv = document.getElementById('app');
+      
+      if (state.authLoading) {
+        appDiv.innerHTML = `<div class="min-h-screen flex flex-col items-center justify-center font-serif"><i data-lucide="sparkles" class="w-12 h-12 text-[#8d6e63] animate-spin-slow mb-4"></i><div class="text-[#d7ccc8] text-xl tracking-[0.3em] animate-pulse">靈力凝聚中...</div></div>`;
+        lucide.createIcons(); return;
+      }
+
+      if (!state.user) {
+        appDiv.innerHTML = `
+          <div class="min-h-screen bg-cover bg-center flex items-center justify-center p-4" style="background-image: url('${BACKGROUNDS.intro}')">
+            <div class="w-full max-w-md glass-panel p-6 md:p-8 rounded shadow-2xl border border-[#c1a58d] font-serif">
+              <div class="text-center mb-8 border-b-2 border-[#d7ccc8] pb-4">
+                <i data-lucide="shield" class="w-12 h-12 text-[#8d6e63] mx-auto mb-2"></i>
+                <h2 class="text-2xl md:text-3xl font-black text-[#3e2723] tracking-widest">軌郭山入門考驗</h2>
+                <p class="text-[#5d4037] mt-2 tracking-wider">${state.authMode === 'login' ? '修士登入' : '凝聚靈魂 (註冊)'}</p>
+              </div>
+              <form onsubmit="window.handleAuth(event)" class="space-y-6">
+                <div class="flex items-center bg-[#fafafa] border-2 border-[#bcaaa4] p-3 focus-within:border-[#5d4037] rounded">
+                  <i data-lucide="user" class="text-[#8d6e63] mr-3"></i>
+                  <input type="email" name="email" required placeholder="靈魂印記 (Email)" class="w-full bg-transparent outline-none text-lg">
+                </div>
+                <div class="flex items-center bg-[#fafafa] border-2 border-[#bcaaa4] p-3 focus-within:border-[#5d4037] rounded">
+                  <i data-lucide="lock" class="text-[#8d6e63] mr-3"></i>
+                  <input type="password" name="password" required placeholder="密語 (Password)" class="w-full bg-transparent outline-none text-lg">
+                </div>
+                ${state.authError ? `<div class="text-red-600 text-center font-bold">${state.authError}</div>` : ''}
+                <button type="submit" class="w-full bg-[#3e2723] text-[#f5efe6] font-bold py-4 text-xl tracking-widest shadow-lg active:scale-95 transition-transform touch-manipulation">${state.authMode === 'login' ? '登入仙門' : '締結契約'}</button>
+              </form>
+              <button type="button" onclick="window.toggleAuthMode()" class="mt-6 w-full text-[#8d6e63] hover:text-[#5d4037] underline tracking-widest text-sm md:text-base py-3 touch-manipulation">
+                ${state.authMode === 'login' ? '尚未擁有印記？前往註冊' : '已有印記？前往登入'}
+              </button>
+            </div>
+          </div>`;
+        lucide.createIcons(); return;
+      }
+
+      if (!state.isActivated) {
+        appDiv.innerHTML = `
+          <div class="min-h-screen bg-cover bg-center flex items-center justify-center p-4" style="background-image: url('${BACKGROUNDS.m1}')">
+            <div class="w-full max-w-md glass-panel p-6 md:p-8 rounded shadow-2xl border border-[#c1a58d] font-serif text-center relative">
+              <button type="button" onclick="window.logout()" class="absolute top-2 right-2 md:top-4 md:right-4 text-[#8d6e63] hover:text-red-600 flex items-center gap-1 p-3 touch-manipulation text-sm"><i data-lucide="log-out" class="w-4 h-4"></i> 退避</button>
+              <i data-lucide="key-round" class="w-12 h-12 text-[#8d6e63] mx-auto mb-4 mt-6"></i>
+              <h2 class="text-2xl md:text-3xl font-black text-[#3e2723] tracking-widest mb-2">驗證通關令牌</h2>
+              <p class="text-[#5d4037] mb-8 leading-relaxed">請輸入宗門派發的通關令牌以開啟試煉。<br/>(例如：TEAM-A)</p>
+              <form onsubmit="window.handleActivation(event)" class="space-y-6">
+                <input type="text" name="code" required placeholder="請輸入通關令牌..." class="w-full bg-[#fafafa] border-2 border-[#bcaaa4] p-4 text-center text-xl tracking-wider focus:outline-none focus:border-[#5d4037] uppercase rounded">
+                ${state.actError ? `<div class="text-red-600 font-bold">${state.actError}</div>` : ''}
+                <button type="submit" class="w-full bg-[#2e4c3a] text-[#f1f8e9] font-bold py-4 text-xl tracking-widest shadow-lg active:scale-95 transition-transform flex justify-center items-center gap-2 touch-manipulation">解開陣法 <i data-lucide="sparkles"></i></button>
+              </form>
+            </div>
+          </div>`;
+        lucide.createIcons(); return;
+      }
+
+      appDiv.innerHTML = renderGameStage();
+      lucide.createIcons();
+    };
+
+    const renderGameStage = () => {
       const s = STAGE_DATA[state.stage];
       let puzzleHtml = '';
-      if (s.puzzleHtml) puzzleHtml = s.puzzleHtml;
-      else if (s.puzzle) {
-        const inputMode = s.puzzle.mode === 'numeric' ? 'type="number" pattern="[0-9]*"' : 'type="text"';
-        const btnClass = "bg-[#8d6e63] text-[#f5efe6]";
+
+      if (s.customPuzzle) {
         puzzleHtml = `
-          <div class="bg-[#fcf8f2] p-8 rounded-sm border border-[#c1a58d] shadow-inner text-[#3e2723]">
-            <h3 class="text-2xl font-bold text-[#5d4037] mb-6 flex items-center justify-center gap-3 border-b-2 border-[#d7ccc8] pb-4"><i data-lucide="key-round"></i> 破解謎陣 <i data-lucide="key-round"></i></h3>
-            <p class="text-lg leading-loose mb-8 text-center">${s.puzzle.q}</p>
-            <div class="mb-8 p-5 bg-[#f5efe6] border border-[#d7ccc8] rounded">
-              <div class="flex justify-center gap-4 mb-4">
-                <button type="button" onclick="revealHint(1)" class="px-4 py-2 rounded text-sm tracking-widest border flex items-center gap-2 ${btnClass}"><i data-lucide="eye" class="w-4 h-4"></i> 錦囊一</button>
-                ${s.puzzle.h2 ? `<button type="button" onclick="revealHint(2)" ${state.hintsRevealed < 1 ? 'disabled' : ''} class="px-4 py-2 rounded text-sm tracking-widest border flex items-center gap-2 ${state.hintsRevealed < 1 ? 'opacity-50' : btnClass}"><i data-lucide="eye" class="w-4 h-4"></i> 錦囊二</button>` : ''}
+          <div class="bg-[#fcf8f2] bg-rice-paper p-6 md:p-8 rounded-sm border border-[#c1a58d] shadow-inner font-serif">
+            <h3 class="text-xl md:text-2xl font-bold text-[#5d4037] mb-6 flex items-center justify-center gap-3 border-b-2 border-[#d7ccc8] pb-4"><i data-lucide="map" class="text-[#8d6e63]"></i><span class="tracking-[0.2em]">星圖解密</span></h3>
+            <p class="text-[#3e2723] text-lg leading-loose mb-8 text-center">請找出獲取打敗熐龍寶物的「三個地點」。</p>
+            <div class="mb-8 p-4 md:p-5 bg-[#f5efe6] border border-[#d7ccc8] rounded">
+              <div class="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4 mb-4">
+                <button type="button" onClick="window.revealHint(1)" class="w-full sm:w-auto px-4 py-3 sm:py-2 rounded text-sm tracking-widest transition-colors flex justify-center items-center gap-2 touch-manipulation ${state.hintsRevealed >= 1 ? 'bg-[#d7ccc8] text-[#5d4037] border border-[#a1887f]' : 'bg-[#8d6e63] text-[#f5efe6] shadow-md'}"><i data-lucide="eye" class="w-4 h-4"></i>錦囊一</button>
+                <button type="button" onClick="window.revealHint(2)" ${state.hintsRevealed < 1 ? 'disabled' : ''} class="w-full sm:w-auto px-4 py-3 sm:py-2 rounded text-sm tracking-widest transition-colors flex justify-center items-center gap-2 touch-manipulation ${state.hintsRevealed >= 2 ? 'bg-[#d7ccc8] text-[#5d4037] border border-[#a1887f]' : state.hintsRevealed < 1 ? 'bg-[#e0e0e0] text-[#9e9e9e]' : 'bg-[#8d6e63] text-[#f5efe6] shadow-md'}"><i data-lucide="eye" class="w-4 h-4"></i>錦囊二</button>
               </div>
               <div class="space-y-3 min-h-[40px]">
-                ${state.hintsRevealed >= 1 ? `<p class="text-[15px] border-l-4 border-[#8d6e63] pl-3 py-1 bg-[#efebe9]"><strong>提示一：</strong> ${s.puzzle.h1}</p>` : ''}
-                ${state.hintsRevealed >= 2 ? `<p class="text-[15px] border-l-4 border-[#8d6e63] pl-3 py-1 bg-[#efebe9]"><strong>提示二：</strong> ${s.puzzle.h2}</p>` : ''}
+                ${state.hintsRevealed >= 1 ? `<p class="text-[14px] md:text-[15px] border-l-4 border-[#8d6e63] pl-3 py-1 bg-[#efebe9]"><strong>提示一：</strong> 顏色點必需相對應。</p>` : ''}
+                ${state.hintsRevealed >= 2 ? `<p class="text-[14px] md:text-[15px] border-l-4 border-[#8d6e63] pl-3 py-1 bg-[#efebe9]"><strong>提示二：</strong> 你再想一下⭐️，透明卡片要疊在地圖上才能顯現玄機。</p>` : ''}
               </div>
             </div>
-            <form onsubmit="checkPuzzle(event, '${s.puzzle.validator}')" class="space-y-6">
-              <input ${inputMode} name="answer" required placeholder="請以靈力輸入您的答案..." class="w-full bg-[#fafafa] border-2 border-[#bcaaa4] p-4 text-center text-lg focus:outline-none focus:border-[#5d4037]" />
+            <form onsubmit="window.checkMission1(event)" class="space-y-4">
+              <div class="flex items-center gap-3"><div class="w-4 h-4 rounded-full bg-red-600 shadow-[0_0_10px_red] shrink-0"></div><input type="text" name="red" required placeholder="紅點對應地點" class="flex-1 w-full bg-[#fafafa] border-2 border-[#bcaaa4] p-3 text-base md:text-lg focus:outline-none focus:border-red-600 rounded" /></div>
+              <div class="flex items-center gap-3"><div class="w-4 h-4 rounded-full bg-blue-600 shadow-[0_0_10px_blue] shrink-0"></div><input type="text" name="blue" required placeholder="藍點對應地點" class="flex-1 w-full bg-[#fafafa] border-2 border-[#bcaaa4] p-3 text-base md:text-lg focus:outline-none focus:border-blue-600 rounded" /></div>
+              <div class="flex items-center gap-3"><div class="w-4 h-4 rounded-full bg-green-600 shadow-[0_0_10px_green] shrink-0"></div><input type="text" name="green" required placeholder="綠點對應地點" class="flex-1 w-full bg-[#fafafa] border-2 border-[#bcaaa4] p-3 text-base md:text-lg focus:outline-none focus:border-green-600 rounded" /></div>
+              <div id="puzzle-error-m1" class="text-[#c62828] text-center font-bold animate-pulse mt-4"></div>
+              <button type="submit" class="w-full mt-6 bg-[#3e2723] text-[#f5efe6] font-bold py-4 px-6 text-lg md:text-xl tracking-[0.3em] flex justify-center items-center gap-2 active:scale-95 touch-manipulation rounded"><i data-lucide="sparkles"></i> 祭出陣眼</button>
+            </form>
+          </div>`;
+      } else if (s.customBoss) {
+        puzzleHtml = `
+          <div class="bg-[#fcf8f2] p-6 md:p-8 rounded border border-[#d7ccc8] text-center font-serif shadow-inner">
+            <h3 class="text-xl md:text-2xl font-bold text-[#c62828] mb-6 tracking-widest border-b-2 border-[#ffcdd2] pb-4">匯聚眾人之力</h3>
+            <p class="text-[#3e2723] mb-8 text-base md:text-lg">你願意信任這些素不相識的同伴，並貢獻自己的法力嗎？<br/>(請注入 1 至 10 點法力)</p>
+            <form onsubmit="window.fightBoss(event)">
+              <input name="mana" type="text" inputmode="numeric" pattern="[0-9]*" min="1" max="10" required placeholder="輸入法力值 (1-10)" class="w-full max-w-[200px] md:max-w-xs mx-auto block bg-white text-[#c62828] border-2 border-[#ef9a9a] p-4 text-center text-xl md:text-2xl font-bold mb-8 focus:outline-none focus:border-[#c62828] rounded" />
+              <button type="submit" class="w-full bg-[#c62828] text-white font-bold py-4 px-6 text-lg md:text-xl tracking-[0.2em] md:tracking-[0.3em] shadow-[0_5px_15px_rgba(198,40,40,0.4)] active:scale-95 rounded touch-manipulation">獻出法力，破滅龍魂！</button>
+            </form>
+          </div>`;
+      } else if (s.puzzle) {
+        const inputMode = s.puzzle.mode === 'numeric' ? 'type="text" inputmode="numeric" pattern="[0-9]*"' : 'type="text"';
+        puzzleHtml = `
+          <div class="bg-[#fcf8f2] bg-rice-paper p-6 md:p-8 rounded border border-[#c1a58d] shadow-inner font-serif">
+            <h3 class="text-xl md:text-2xl font-bold text-[#5d4037] mb-6 flex items-center justify-center gap-3 border-b-2 border-[#d7ccc8] pb-4"><i data-lucide="key-round" class="text-[#8d6e63]"></i><span class="tracking-[0.2em]">破解謎陣</span><i data-lucide="key-round" class="text-[#8d6e63]"></i></h3>
+            <p class="text-[#3e2723] text-lg leading-loose mb-8 text-center">${s.puzzle.q}</p>
+            <div class="mb-8 p-4 md:p-5 bg-[#f5efe6] border border-[#d7ccc8] rounded">
+              <div class="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4 mb-4">
+                <button type="button" onClick="window.revealHint(1)" class="w-full sm:w-auto px-4 py-3 sm:py-2 rounded text-sm tracking-widest transition-colors flex justify-center items-center gap-2 touch-manipulation ${state.hintsRevealed >= 1 ? 'bg-[#d7ccc8] text-[#5d4037] border border-[#a1887f]' : 'bg-[#8d6e63] text-[#f5efe6] shadow-md'}"><i data-lucide="eye" class="w-4 h-4"></i>錦囊一</button>
+                <button type="button" onClick="window.revealHint(2)" ${state.hintsRevealed < 1 ? 'disabled' : ''} class="w-full sm:w-auto px-4 py-3 sm:py-2 rounded text-sm tracking-widest transition-colors flex justify-center items-center gap-2 touch-manipulation ${state.hintsRevealed >= 2 ? 'bg-[#d7ccc8] text-[#5d4037] border border-[#a1887f]' : state.hintsRevealed < 1 ? 'bg-[#e0e0e0] text-[#9e9e9e]' : 'bg-[#8d6e63] text-[#f5efe6] shadow-md'}"><i data-lucide="eye" class="w-4 h-4"></i>錦囊二</button>
+              </div>
+              <div class="space-y-3 min-h-[40px]">
+                ${state.hintsRevealed >= 1 ? `<p class="text-[14px] md:text-[15px] border-l-4 border-[#8d6e63] pl-3 py-1 bg-[#efebe9]"><strong>提示一：</strong> ${s.puzzle.h1}</p>` : ''}
+                ${state.hintsRevealed >= 2 ? `<p class="text-[14px] md:text-[15px] border-l-4 border-[#8d6e63] pl-3 py-1 bg-[#efebe9]"><strong>提示二：</strong> ${s.puzzle.h2}</p>` : ''}
+              </div>
+            </div>
+            <form onsubmit="window.checkPuzzle(event, ${state.stage})" class="space-y-6">
+              <input ${inputMode} name="answer" required placeholder="請以靈力輸入您的答案..." class="w-full bg-[#fafafa] border-2 border-[#bcaaa4] p-4 text-center text-lg focus:outline-none focus:border-[#5d4037] rounded" />
               <div id="puzzle-error" class="text-[#c62828] text-center font-bold animate-pulse"></div>
-              <button type="submit" class="w-full bg-[#3e2723] text-[#f5efe6] font-bold py-4 px-6 text-xl tracking-[0.3em] flex justify-center items-center gap-2 active:scale-95"><i data-lucide="zap"></i> 祭出陣眼</button>
+              <button type="submit" class="w-full bg-[#3e2723] text-[#f5efe6] font-bold py-4 px-6 text-lg md:text-xl tracking-[0.3em] flex justify-center items-center gap-2 active:scale-95 touch-manipulation rounded"><i data-lucide="sparkles"></i> 祭出陣眼</button>
             </form>
           </div>`;
       }
 
-      let innerContent = state.view === 'story' ? 
-        `<div class="fade-in text-[17px] leading-[2.2]">${s.content}${s.chat ? `<div id="chat-container"></div>` : ''}${s.contentAfterChat ? `<div id="content-after-chat" class="hidden">${s.contentAfterChat}</div>` : ''}${puzzleHtml ? `<div class="mt-12 text-center pt-8 border-t border-dashed border-[#bcaaa4]"><button onclick="toggleView('puzzle')" class="bg-[#2e4c3a] text-[#f1f8e9] px-10 py-4 text-xl tracking-widest active:scale-95 flex items-center justify-center gap-3 mx-auto">前往破解謎陣 <i data-lucide="arrow-right"></i></button></div>` : ''}</div>` : 
-        `<div class="fade-in"><button onclick="toggleView('story')" class="text-[#5d4037] mb-6 flex items-center gap-2 font-bold bg-[#efebe9] px-4 py-2 border border-[#d7ccc8] active:scale-95"><i data-lucide="arrow-left" class="w-4 h-4"></i> 返回查閱卷宗</button>${puzzleHtml}</div>`;
+      return `
+        <div class="min-h-screen bg-cover bg-center bg-fixed" style="background-image: url('${s.bg}')">
+          <div class="min-h-screen bg-black/60 backdrop-blur-[2px] py-4 md:py-8 px-2 md:px-4 flex justify-center items-start">
+            <div class="w-full max-w-3xl bg-[#f4eade] bg-rice-paper rounded-sm shadow-[0_20px_50px_rgba(0,0,0,0.8)] relative z-10 border-x-[8px] md:border-x-[12px] border-[#d7ccc8]">
+              
+              <div class="h-4 md:h-6 bg-[#3e2723] w-[104%] -ml-[2%] rounded-full shadow-md border-y border-[#1b100c] relative">
+                 <div class="absolute top-0 bottom-0 left-0 w-2 bg-[#1b100c] rounded-l-full"></div>
+                 <div class="absolute top-0 bottom-0 right-0 w-2 bg-[#1b100c] rounded-r-full"></div>
+              </div>
 
-      return `<div class="min-h-screen bg-cover bg-center bg-fixed" style="background-image: url('${s.bg}')"><div class="min-h-screen bg-black/50 backdrop-blur-[2px] py-8 px-4 flex justify-center items-start"><div class="w-full max-w-3xl bg-[#f4eade] bg-[url('https://www.transparenttextures.com/patterns/rice-paper.png')] rounded-sm shadow-2xl relative z-10 border-x-[12px] border-[#d7ccc8]"><div class="p-6 md:p-10 min-h-[60vh] flex flex-col relative font-serif"><div class="text-center border-b-2 border-[#8d6e63] pb-6 mb-8"><h2 class="text-3xl font-black text-[#3e2723] tracking-[0.2em]">${s.title}</h2>${s.subtitle ? `<p class="text-[#5d4037] mt-3 tracking-widest">${s.subtitle}</p>` : ''}</div><div class="flex-1">${innerContent}</div></div></div></div></div>`;
-    }
+              <div class="p-5 md:p-10 min-h-[70vh] flex flex-col relative font-serif">
+                ${state.teamCode ? `<div class="absolute top-2 right-2 text-xs font-bold text-[#8d6e63] bg-[#efebe9] px-2 py-1 rounded border border-[#d7ccc8]">隊伍: ${state.teamCode}</div>` : ''}
+                <div class="text-center border-b-2 border-[#8d6e63] pb-4 md:pb-6 mb-6 md:mb-8 relative">
+                  <i data-lucide="cloud" class="absolute left-0 top-2 text-[#bcaaa4] opacity-50 w-6 h-6 md:w-8 md:h-8"></i>
+                  <i data-lucide="cloud" class="absolute right-0 top-2 text-[#bcaaa4] opacity-50 w-6 h-6 md:w-8 md:h-8"></i>
+                  <h2 class="text-xl md:text-3xl font-black text-[#3e2723] tracking-[0.1em] md:tracking-[0.2em]">${s.title}</h2>
+                  ${s.subtitle ? `<p class="text-[#5d4037] mt-2 md:mt-3 tracking-widest font-bold">${s.subtitle}</p>` : ''}
+                </div>
 
-    window.startChatSimulation = () => {
-      const s = STAGE_DATA[state.stage];
-      if (!s.chat) return;
-      document.getElementById('chat-container').innerHTML = `<div class="rounded-md border-2 border-[#8d6e63] my-6 shadow-lg"><div class="bg-[#2e4c3a] text-[#e8f5e9] p-3 font-bold flex items-center gap-2 border-b-2 border-[#1b2f23]"><i data-lucide="sparkles" class="w-5 h-5"></i><span>通訊玉簡</span></div><div id="chat-scroll" class="p-4 h-64 overflow-y-auto flex flex-col gap-3 bg-[#fdfbf7]"><div id="chat-messages" class="flex flex-col gap-3"></div><div id="chat-typing" class="text-[#8d6e63] text-sm italic ml-2 animate-pulse">靈力波動中...</div></div></div>`;
-      lucide.createIcons();
-      let count = 0;
-      const addMsg = () => {
-        if (count < s.chat.length) {
-          const msg = s.chat[count];
-          const isMe = msg.sender === '您';
-          const isSys = msg.sender === '系統';
-          const box = document.getElementById('chat-messages');
-          box.insertAdjacentHTML('beforeend', `<div class="flex ${isMe ? 'justify-end' : 'justify-start'} fade-in"><div class="max-w-[85%] rounded-lg px-4 py-3 text-[15px] shadow-sm ${isMe ? 'bg-[#385e46] text-[#f1f8e9] rounded-tr-none' : isSys ? 'bg-transparent text-[#5d4037] font-bold text-center border-y border-[#d7ccc8] py-1' : 'bg-[#f5efe6] text-[#3e2723] rounded-tl-none border border-[#d7ccc8]'}">${(!isMe && !isSys) ? `<div class="text-xs font-bold text-[#2e4c3a] mb-1">${msg.sender}</div>` : ''}${msg.text}</div></div>`);
-          document.getElementById('chat-scroll').scrollTop = document.getElementById('chat-scroll').scrollHeight;
-          count++;
-          state.chatTimeout = setTimeout(addMsg, 800);
-        } else {
-          document.getElementById('chat-typing').style.display = 'none';
-          const ac = document.getElementById('content-after-chat');
-          if(ac) ac.classList.remove('hidden');
-        }
-      };
-      state.chatTimeout = setTimeout(addMsg, 500);
+                <div class="flex-1">
+                  ${state.view === 'story' ? `
+                    <div class="animate-in fade-in zoom-in-95 duration-500">
+                      <div class="text-[#3e2723] text-[15px] md:text-[17px] leading-[2] md:leading-[2.2] tracking-wide space-y-5 md:space-y-6">${s.content}</div>
+                      ${puzzleHtml ? `
+                        <div class="mt-8 md:mt-12 text-center pt-6 md:pt-8 border-t border-dashed border-[#bcaaa4]">
+                          <button type="button" onclick="window.toggleView('puzzle')" class="w-full sm:w-auto bg-[#2e4c3a] text-[#f1f8e9] px-6 md:px-10 py-4 text-lg md:text-xl tracking-[0.2em] rounded active:bg-[#1b2f23] transition-transform active:scale-95 shadow-lg flex items-center justify-center gap-3 mx-auto touch-manipulation">前往破解謎陣 <i data-lucide="arrow-right"></i></button>
+                        </div>` : ''}
+                    </div>` : `
+                    <div class="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                      <button type="button" onclick="window.toggleView('story')" class="text-[#5d4037] mb-6 flex items-center gap-2 hover:text-[#3e2723] tracking-widest font-bold bg-[#efebe9] px-4 py-3 rounded border border-[#d7ccc8] w-fit active:scale-95 touch-manipulation"><i data-lucide="arrow-left" class="w-4 h-4"></i> 返回查閱卷宗</button>
+                      ${puzzleHtml}
+                    </div>`
+                  }
+                </div>
+              </div>
+
+              <div class="h-4 md:h-6 bg-[#3e2723] w-[104%] -ml-[2%] rounded-full shadow-md border-y border-[#1b100c] relative mt-auto">
+                 <div class="absolute top-0 bottom-0 left-0 w-2 bg-[#1b100c] rounded-l-full"></div>
+                 <div class="absolute top-0 bottom-0 right-0 w-2 bg-[#1b100c] rounded-r-full"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 相機 Modal -->
+          <div id="camera-modal" class="hidden fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center p-4">
+            <button type="button" onclick="window.closeCamera()" class="absolute top-4 right-4 text-white p-4 bg-red-600 rounded-full shadow-lg touch-manipulation"><i data-lucide="x"></i></button>
+            <div class="relative w-full max-w-sm aspect-[3/4] bg-black rounded-lg overflow-hidden border-4 border-[#d7ccc8] shadow-2xl">
+              <video id="camera-video" class="absolute inset-0 w-full h-full object-cover" playsinline autoplay muted></video>
+              <img id="camera-preview" class="hidden absolute inset-0 w-full h-full object-cover" />
+              <!-- 仙俠風相框 Overlay -->
+              <div class="absolute inset-0 pointer-events-none border-[12px] border-[#3e2723]/30 mix-blend-overlay"></div>
+              <img id="camera-frame" src="https://www.transparenttextures.com/patterns/rice-paper.png" class="absolute inset-0 w-full h-full object-cover opacity-20 pointer-events-none mix-blend-overlay" crossorigin="anonymous">
+              <div class="absolute bottom-4 left-0 right-0 text-center font-serif text-white font-bold tracking-widest drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] text-xl">軌郭山入門考驗</div>
+            </div>
+            <div class="mt-8 flex gap-4">
+              <button type="button" id="capture-btn" onclick="window.takeSnapshot()" class="bg-white text-[#3e2723] w-16 h-16 rounded-full flex items-center justify-center shadow-[0_0_20px_white] active:scale-90 transition touch-manipulation"><i data-lucide="camera" class="w-8 h-8"></i></button>
+              <button type="button" id="share-btn" onclick="window.sharePhoto()" class="hidden bg-[#2e4c3a] text-white px-8 py-4 rounded-full font-bold shadow-lg active:scale-95 transition flex items-center gap-2 touch-manipulation"><i data-lucide="share-2"></i> 分享榮耀</button>
+            </div>
+            <canvas id="camera-canvas" class="hidden"></canvas>
+          </div>
+        </div>
+      `;
     };
 
-    let cameraStream = null;
-
-    window.openCamera = async () => {
-      const modal = document.getElementById('camera-modal');
-      const video = document.getElementById('camera-video');
-      document.getElementById('photo-preview').classList.add('hidden');
-      video.classList.remove('hidden');
-      document.getElementById('camera-controls').classList.remove('hidden');
-      document.getElementById('share-controls').classList.add('hidden');
-      modal.classList.remove('hidden');
-      modal.classList.add('flex');
-      
-      try {
-        cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-        video.srcObject = cameraStream;
-      } catch (err) {
-        alert("無法存取相機，請確認已授予瀏覽器相機權限！");
-        closeCamera();
-      }
-    };
-
-    window.closeCamera = () => {
-      document.getElementById('camera-modal').classList.add('hidden');
-      document.getElementById('camera-modal').classList.remove('flex');
-      if (cameraStream) {
-        cameraStream.getTracks().forEach(track => track.stop());
-        cameraStream = null;
-      }
-    };
-
-    window.takePhoto = () => {
-      const video = document.getElementById('camera-video');
-      const canvas = document.getElementById('camera-canvas');
-      const preview = document.getElementById('photo-preview');
-      
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext('2d');
-      
-      // 繪製視訊畫面
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      
-      // 繪製仙俠風邊框與文字
-      ctx.strokeStyle = 'rgba(93, 64, 55, 0.8)'; // 深咖啡色邊框
-      ctx.lineWidth = canvas.width * 0.05;
-      ctx.strokeRect(0, 0, canvas.width, canvas.height);
-      
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-      ctx.font = `bold ${canvas.height * 0.08}px "Noto Serif TC", serif`;
-      ctx.textAlign = "center";
-      ctx.shadowColor = "black";
-      ctx.shadowBlur = 10;
-      ctx.fillText("軌郭山 結業留念", canvas.width / 2, canvas.height - (canvas.height * 0.1));
-
-      // 轉換為圖片顯示
-      window.photoDataUrl = canvas.toDataURL('image/jpeg', 0.9);
-      preview.src = window.photoDataUrl;
-      
-      video.classList.add('hidden');
-      preview.classList.remove('hidden');
-      document.getElementById('camera-controls').classList.add('hidden');
-      document.getElementById('share-controls').classList.remove('hidden');
-      document.getElementById('share-controls').classList.add('flex');
-    };
-
-    window.retakePhoto = () => {
-      document.getElementById('photo-preview').classList.add('hidden');
-      document.getElementById('camera-video').classList.remove('hidden');
-      document.getElementById('camera-controls').classList.remove('hidden');
-      document.getElementById('share-controls').classList.add('hidden');
-      document.getElementById('share-controls').classList.remove('flex');
-    };
-
-    window.sharePhoto = async () => {
-      if (!window.photoDataUrl) return;
-      try {
-        const blob = await (await fetch(window.photoDataUrl)).blob();
-        const file = new File([blob], 'mos-puzzle-hunt.jpg', { type: 'image/jpeg' });
-        
-        // 檢查瀏覽器是否支援 Web Share API (通常手機都有)
-        if (navigator.share) {
-          await navigator.share({
-            title: '軌郭山結業留念',
-            text: '我成功完成了軌郭山終極入門考驗！你也來挑戰吧！',
-            files: [file]
-          });
-        } else {
-          // 備案：自動下載圖片
-          const link = document.createElement('a');
-          link.href = window.photoDataUrl;
-          link.download = 'mos-puzzle-hunt.jpg';
-          link.click();
-          alert("紀念照已下載至您的裝置！");
-        }
-      } catch (err) {
-        console.error("Share error:", err);
-      }
-    };
+    // 初始渲染
+    render();
 
   </script>
 </body>
