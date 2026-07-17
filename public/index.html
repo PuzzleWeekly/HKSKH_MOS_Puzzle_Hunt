@@ -1,0 +1,779 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { MessageCircle, Scroll, Sparkles, Cloud, Sword, Shield, Map, KeyRound, ArrowLeft, ArrowRight, Eye, LogOut, User, Lock } from 'lucide-react';
+import { initializeApp } from "firebase/app";
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
+
+// === Firebase Configuration ===
+const firebaseConfig = {
+  apiKey: "AIzaSyDvL4wsUU7vBe8k6EPJRLTCv6bsj8ZiI5U",
+  authDomain: "hksku-mos-puzzle-hunt.firebaseapp.com",
+  projectId: "hksku-mos-puzzle-hunt",
+  storageBucket: "hksku-mos-puzzle-hunt.firebasestorage.app",
+  messagingSenderId: "952553212633",
+  appId: "1:952553212633:web:5fbd3507e018e20fc98cc8",
+  measurementId: "G-NRBJ05G9S3"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+
+// === 背景圖庫 (仙俠風) ===
+const BACKGROUNDS = {
+  intro: 'https://images.unsplash.com/photo-1542834369-f10ebf06d3e0?auto=format&fit=crop&w=1920&q=80',
+  m1: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1920&q=80',
+  m2: 'https://images.unsplash.com/photo-1583207804784-198ba4353030?auto=format&fit=crop&w=1920&q=80',
+  m3: 'https://images.unsplash.com/photo-1528652011036-7c0125fa0a1e?auto=format&fit=crop&w=1920&q=80',
+  m4: 'https://images.unsplash.com/photo-1580136608260-4ebf15fac379?auto=format&fit=crop&w=1920&q=80',
+  m5: 'https://images.unsplash.com/photo-1519060595507-6c2ffbc6e5de?auto=format&fit=crop&w=1920&q=80',
+  boss: 'https://images.unsplash.com/photo-1502481851512-e9e2529bfbf9?auto=format&fit=crop&w=1920&q=80',
+  choice: 'https://images.unsplash.com/photo-1506452814322-a9b1c7ea9eb7?auto=format&fit=crop&w=1920&q=80',
+  good: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1920&q=80',
+  bad: 'https://images.unsplash.com/photo-1478059425650-ca13d6d422f4?auto=format&fit=crop&w=1920&q=80'
+};
+
+// 通訊玉簡 (仙俠風對話框 - Mobile Optimized)
+const ChatApp = ({ messages, onComplete }) => {
+  const [visibleCount, setVisibleCount] = useState(0);
+  const scrollRef = useRef(null);
+
+  useEffect(() => {
+    if (visibleCount < messages.length) {
+      const timer = setTimeout(() => {
+        setVisibleCount(prev => prev + 1);
+      }, 800); 
+      return () => clearTimeout(timer);
+    } else if (onComplete) {
+      onComplete();
+    }
+  }, [visibleCount, messages, onComplete]);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [visibleCount]);
+
+  return (
+    <div className="rounded-md overflow-hidden border border-[#8d6e63] my-4 sm:my-6 shadow-lg font-serif">
+      <div className="bg-[#2e4c3a] text-[#e8f5e9] p-2 sm:p-3 font-bold flex items-center gap-2 border-b-2 border-[#1b2f23]">
+        <Sparkles size={18} className="text-[#a5d6a7]" />
+        <span className="tracking-widest text-sm sm:text-base">通訊玉簡</span>
+      </div>
+      <div ref={scrollRef} className="p-3 sm:p-4 h-56 sm:h-64 overflow-y-auto flex flex-col gap-3 bg-[#fdfbf7] bg-[url('https://www.transparenttextures.com/patterns/rice-paper.png')]">
+        {messages.slice(0, visibleCount).map((msg, idx) => (
+          <div key={idx} className={`flex ${msg.sender === '您' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[90%] sm:max-w-[85%] rounded-lg px-3 py-2 sm:px-4 sm:py-3 text-[14px] sm:text-[15px] leading-relaxed shadow-sm ${
+              msg.sender === '您' 
+                ? 'bg-[#385e46] text-[#f1f8e9] rounded-tr-none border border-[#1b2f23]' 
+                : msg.sender === '系統'
+                ? 'bg-transparent text-[#5d4037] font-bold text-center mx-auto border-y border-[#d7ccc8] py-1 text-xs sm:text-sm'
+                : 'bg-[#f5efe6] text-[#3e2723] rounded-tl-none border border-[#d7ccc8]'
+            }`}>
+              {msg.sender !== '您' && msg.sender !== '系統' && (
+                <div className="text-xs font-bold text-[#2e4c3a] mb-1 tracking-wider">{msg.sender}</div>
+              )}
+              {msg.text}
+            </div>
+          </div>
+        ))}
+        {visibleCount < messages.length && (
+          <div className="text-[#8d6e63] text-xs sm:text-sm italic ml-2 animate-pulse tracking-widest">靈力波動中...</div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// 獨立解謎表單 (Mobile Optimized)
+const PuzzleForm = ({ question, hint1, hint2, validateFn, onSuccess, inputMode = "text" }) => {
+  const [input, setInput] = useState('');
+  const [error, setError] = useState('');
+  const [hintsRevealed, setHintsRevealed] = useState(0);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (validateFn(input)) {
+      setError('');
+      onSuccess();
+    } else {
+      setError('陣法排斥，答案有誤，請重新凝神思考。');
+    }
+  };
+
+  return (
+    <div className="w-full font-serif animate-in slide-in-from-right duration-500">
+      <div className="bg-[#fcf8f2] bg-[url('https://www.transparenttextures.com/patterns/rice-paper.png')] p-4 sm:p-8 rounded-sm border border-[#c1a58d] shadow-inner">
+        <h3 className="text-xl sm:text-2xl font-bold text-[#5d4037] mb-4 sm:mb-6 flex items-center justify-center gap-2 sm:gap-3 border-b-2 border-[#d7ccc8] pb-3 sm:pb-4">
+          <KeyRound className="text-[#8d6e63] w-5 h-5 sm:w-6 sm:h-6" />
+          <span className="tracking-[0.1em] sm:tracking-[0.2em]">破解謎陣</span>
+          <KeyRound className="text-[#8d6e63] w-5 h-5 sm:w-6 sm:h-6" />
+        </h3>
+        
+        <p className="text-[#3e2723] text-base sm:text-lg leading-relaxed sm:leading-loose mb-6 sm:mb-8 text-center">{question}</p>
+        
+        {/* 錦囊區 */}
+        <div className="mb-6 sm:mb-8 p-3 sm:p-5 bg-[#f5efe6] border border-[#d7ccc8] rounded">
+          <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4 mb-3 sm:mb-4">
+            <button 
+              type="button" 
+              onClick={() => setHintsRevealed(Math.max(hintsRevealed, 1))}
+              className={`w-full sm:w-auto px-4 py-3 sm:py-2 rounded text-sm tracking-widest transition-colors flex items-center justify-center gap-2 active:scale-95 ${
+                hintsRevealed >= 1 
+                  ? 'bg-[#d7ccc8] text-[#5d4037] cursor-default border border-[#a1887f]' 
+                  : 'bg-[#8d6e63] text-[#f5efe6] hover:bg-[#5d4037] shadow-md border border-[#4e342e]'
+              }`}
+            >
+              <Eye size={16} />
+              {hintsRevealed >= 1 ? '錦囊一已開' : '開啟錦囊一'}
+            </button>
+            
+            {hint2 && (
+              <button 
+                type="button" 
+                onClick={() => setHintsRevealed(2)}
+                disabled={hintsRevealed < 1}
+                className={`w-full sm:w-auto px-4 py-3 sm:py-2 rounded text-sm tracking-widest transition-colors flex items-center justify-center gap-2 active:scale-95 ${
+                  hintsRevealed >= 2 
+                    ? 'bg-[#d7ccc8] text-[#5d4037] cursor-default border border-[#a1887f]' 
+                    : hintsRevealed < 1
+                    ? 'bg-[#e0e0e0] text-[#9e9e9e] cursor-not-allowed border border-[#bdbdbd]'
+                    : 'bg-[#8d6e63] text-[#f5efe6] hover:bg-[#5d4037] shadow-md border border-[#4e342e]'
+                }`}
+              >
+                <Eye size={16} />
+                {hintsRevealed >= 2 ? '錦囊二已開' : '開啟錦囊二'}
+              </button>
+            )}
+          </div>
+
+          <div className="space-y-2 sm:space-y-3 min-h-[30px] sm:min-h-[40px]">
+            {hintsRevealed >= 1 && (
+              <p className="text-[#4e342e] text-[14px] sm:text-[15px] border-l-4 border-[#8d6e63] pl-2 sm:pl-3 py-1 bg-[#efebe9] animate-in fade-in">
+                <strong className="text-[#3e2723]">提示一：</strong> {hint1}
+              </p>
+            )}
+            {hintsRevealed >= 2 && hint2 && (
+              <p className="text-[#4e342e] text-[14px] sm:text-[15px] border-l-4 border-[#8d6e63] pl-2 sm:pl-3 py-1 bg-[#efebe9] animate-in fade-in">
+                <strong className="text-[#3e2723]">提示二：</strong> {hint2}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* 輸入區 */}
+        <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+          <div>
+            <input 
+              type={inputMode === "numeric" ? "text" : "text"}
+              inputMode={inputMode}
+              pattern={inputMode === "numeric" ? "[0-9]*" : undefined}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="請以靈力輸入您的答案..."
+              className="w-full bg-[#fafafa] text-[#3e2723] border-2 border-[#bcaaa4] p-3 sm:p-4 text-center text-base sm:text-lg tracking-wider focus:outline-none focus:border-[#5d4037] focus:bg-white transition-colors rounded-sm"
+            />
+          </div>
+
+          {error && (
+            <div className="text-[#c62828] text-sm sm:text-base text-center font-bold tracking-widest animate-pulse">
+              {error}
+            </div>
+          )}
+
+          <button 
+            type="submit" 
+            className="w-full bg-[#3e2723] active:bg-[#1b100c] sm:hover:bg-[#1b100c] text-[#f5efe6] font-bold py-3 sm:py-4 px-4 sm:px-6 text-lg sm:text-xl tracking-[0.2em] sm:tracking-[0.3em] flex justify-center items-center gap-2 transition-transform active:scale-95 shadow-lg border border-[#1b100c] rounded-sm"
+          >
+            祭出陣眼
+            <Sparkles size={18} className="sm:w-5 sm:h-5" />
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// 卷軸容器 (統一的佈局與故事/解謎切換 - Mobile Optimized)
+const ScrollContainer = ({ bgImage, title, subtitle, storyContent, puzzleElement }) => {
+  const [view, setView] = useState('story'); 
+
+  return (
+    <div className="min-h-screen bg-cover bg-center bg-fixed" style={{ backgroundImage: `url(${bgImage})` }}>
+      <div className="min-h-screen bg-black/60 backdrop-blur-[2px] py-4 px-2 sm:py-8 sm:px-4 flex justify-center items-start overflow-x-hidden">
+        
+        {/* 卷軸本體 */}
+        <div className="w-full max-w-3xl bg-[#f4eade] bg-[url('https://www.transparenttextures.com/patterns/rice-paper.png')] rounded-sm shadow-[0_10px_30px_rgba(0,0,0,0.9)] relative z-10 border-x-[6px] sm:border-x-[12px] border-[#d7ccc8]">
+          
+          {/* 上方畫軸 */}
+          <div className="h-4 sm:h-6 bg-[#3e2723] rounded-full shadow-md border-y border-[#1b100c] absolute -top-2 sm:-top-3 -left-2 -right-2 sm:-left-3 sm:-right-3 z-20">
+             <div className="absolute top-0 bottom-0 left-0 w-2 sm:w-3 bg-[#1b100c] rounded-l-full" />
+             <div className="absolute top-0 bottom-0 right-0 w-2 sm:w-3 bg-[#1b100c] rounded-r-full" />
+          </div>
+
+          <div className="p-4 sm:p-8 md:p-10 min-h-[75vh] flex flex-col relative font-serif mt-2 sm:mt-0">
+            
+            {/* 標題區 */}
+            <div className="text-center border-b-2 border-[#8d6e63] pb-4 sm:pb-6 mb-6 sm:mb-8 relative">
+              <Cloud className="absolute left-0 top-1 sm:top-2 text-[#bcaaa4] opacity-50 w-6 h-6 sm:w-8 sm:h-8" />
+              <Cloud className="absolute right-0 top-1 sm:top-2 text-[#bcaaa4] opacity-50 w-6 h-6 sm:w-8 sm:h-8" />
+              <h2 className="text-2xl sm:text-3xl font-black text-[#3e2723] tracking-[0.1em] sm:tracking-[0.2em]">{title}</h2>
+              {subtitle && <p className="text-[#5d4037] mt-2 sm:mt-3 text-sm sm:text-base tracking-widest">{subtitle}</p>}
+            </div>
+
+            {/* 內容區塊切換 */}
+            <div className="flex-1 pb-4">
+              {view === 'story' ? (
+                <div className="animate-in fade-in zoom-in-95 duration-500">
+                  <div className="text-[#3e2723] text-[15px] sm:text-[17px] leading-[2] sm:leading-[2.2] tracking-wide space-y-4 sm:space-y-6">
+                    {storyContent}
+                  </div>
+                  
+                  {puzzleElement && (
+                    <div className="mt-8 sm:mt-12 text-center pt-6 sm:pt-8 border-t border-dashed border-[#bcaaa4]">
+                      <button 
+                        onClick={() => { window.scrollTo(0,0); setView('puzzle'); }} 
+                        className="w-full sm:w-auto bg-[#2e4c3a] text-[#f1f8e9] px-6 sm:px-10 py-3 sm:py-4 text-lg sm:text-xl tracking-[0.1em] sm:tracking-[0.2em] rounded-sm active:bg-[#1b2f23] sm:hover:bg-[#1b2f23] transition-transform active:scale-95 shadow-lg flex items-center justify-center gap-2 sm:gap-3 mx-auto"
+                      >
+                        前往破解謎陣
+                        <ArrowRight className="w-5 h-5 sm:w-6 sm:h-6" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <button 
+                    onClick={() => setView('story')} 
+                    className="text-[#5d4037] mb-4 sm:mb-6 flex items-center gap-2 active:text-[#3e2723] tracking-widest font-bold bg-[#efebe9] px-3 py-2 sm:px-4 sm:py-2 rounded-sm border border-[#d7ccc8] w-fit text-sm sm:text-base active:scale-95 transition-transform"
+                  >
+                    <ArrowLeft size={18} /> 返回查閱卷宗
+                  </button>
+                  {puzzleElement}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 下方畫軸 */}
+          <div className="h-4 sm:h-6 bg-[#3e2723] rounded-full shadow-md border-y border-[#1b100c] absolute -bottom-2 sm:-bottom-3 -left-2 -right-2 sm:-left-3 sm:-right-3 z-20">
+             <div className="absolute top-0 bottom-0 left-0 w-2 sm:w-3 bg-[#1b100c] rounded-l-full" />
+             <div className="absolute top-0 bottom-0 right-0 w-2 sm:w-3 bg-[#1b100c] rounded-r-full" />
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// === 登入與註冊介面 (仙俠風) ===
+const AuthScreen = () => {
+  const [isLogin, setIsLogin] = useState(true);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      if (isLogin) {
+        await signInWithEmailAndPassword(auth, email, password);
+      } else {
+        await createUserWithEmailAndPassword(auth, email, password);
+      }
+    } catch (err) {
+      if (err.code === 'auth/email-already-in-use') setError('此信箱已被使用。');
+      else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') setError('帳號或密碼錯誤。');
+      else if (err.code === 'auth/weak-password') setError('密碼強度不足 (需至少6字元)。');
+      else setError('認證失敗，請檢查輸入資料或網路狀態。');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-cover bg-center bg-fixed flex items-center justify-center p-4 animate-in fade-in duration-500" style={{ backgroundImage: `url(${BACKGROUNDS.intro})` }}>
+      <div className="w-full max-w-md bg-[#fcf8f2] bg-[url('https://www.transparenttextures.com/patterns/rice-paper.png')] p-6 sm:p-8 rounded-sm shadow-2xl border border-[#c1a58d] relative z-10 font-serif">
+        <div className="text-center mb-6 sm:mb-8 border-b-2 border-[#d7ccc8] pb-4">
+          <Shield className="w-10 h-10 sm:w-12 sm:h-12 text-[#8d6e63] mx-auto mb-2" />
+          <h2 className="text-2xl sm:text-3xl font-black text-[#3e2723] tracking-widest">軌郭山入門考驗</h2>
+          <p className="text-[#5d4037] mt-2 text-sm sm:text-base tracking-wider">{isLogin ? '修士登入' : '凝聚靈魂 (註冊)'}</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+          <div>
+            <div className="flex items-center bg-[#fafafa] border-2 border-[#bcaaa4] p-3 transition-colors focus-within:border-[#5d4037] focus-within:bg-white rounded-sm">
+              <User className="text-[#8d6e63] mr-3 shrink-0" size={20} />
+              <input 
+                type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                placeholder="請輸入靈魂印記 (Email)"
+                className="w-full bg-transparent text-[#3e2723] text-base focus:outline-none placeholder-[#a1887f]"
+              />
+            </div>
+          </div>
+          <div>
+            <div className="flex items-center bg-[#fafafa] border-2 border-[#bcaaa4] p-3 transition-colors focus-within:border-[#5d4037] focus-within:bg-white rounded-sm">
+              <Lock className="text-[#8d6e63] mr-3 shrink-0" size={20} />
+              <input 
+                type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
+                placeholder="請輸入密語 (Password)"
+                className="w-full bg-transparent text-[#3e2723] text-base focus:outline-none placeholder-[#a1887f]"
+              />
+            </div>
+          </div>
+
+          {error && <div className="text-[#c62828] text-sm text-center font-bold animate-pulse px-2">{error}</div>}
+
+          <button type="submit" disabled={loading} className="w-full bg-[#3e2723] active:bg-[#1b100c] sm:hover:bg-[#1b100c] text-[#f5efe6] font-bold py-3 sm:py-4 px-4 text-lg sm:text-xl tracking-widest shadow-lg border border-[#1b100c] rounded-sm disabled:opacity-50 transition-transform active:scale-95">
+            {loading ? '法陣啟動中...' : (isLogin ? '登入仙門' : '締結契約')}
+          </button>
+        </form>
+
+        <div className="mt-6 text-center">
+          <button type="button" onClick={() => { setIsLogin(!isLogin); setError(''); }} className="text-[#8d6e63] hover:text-[#5d4037] underline tracking-widest text-sm sm:text-base p-2 active:scale-95 transition-transform">
+            {isLogin ? '尚未擁有印記？前往註冊' : '已有印記？前往登入'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// === 通關令牌輸入介面 (仙俠風) ===
+const ActivationScreen = ({ onActivate }) => {
+  const [code, setCode] = useState('');
+  const [error, setError] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (code.trim().toUpperCase() === 'MOS2026') {
+      onActivate();
+    } else {
+      setError('通關令牌無效，陣法排斥！');
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-cover bg-center bg-fixed flex items-center justify-center p-4 animate-in fade-in duration-500" style={{ backgroundImage: `url(${BACKGROUNDS.m1})` }}>
+      <div className="w-full max-w-md bg-[#fcf8f2] bg-[url('https://www.transparenttextures.com/patterns/rice-paper.png')] p-6 sm:p-8 rounded-sm shadow-2xl border border-[#c1a58d] relative z-10 font-serif text-center">
+        <button onClick={() => signOut(auth)} className="absolute top-2 right-2 sm:top-4 sm:right-4 text-[#8d6e63] hover:text-[#c62828] transition-colors p-2 flex items-center gap-1 text-xs sm:text-sm active:scale-95">
+          <LogOut size={16} /> 退避
+        </button>
+        
+        <KeyRound className="w-10 h-10 sm:w-12 sm:h-12 text-[#8d6e63] mx-auto mb-3 sm:mb-4 mt-6 sm:mt-4" />
+        <h2 className="text-2xl sm:text-3xl font-black text-[#3e2723] tracking-widest mb-2">驗證通關令牌</h2>
+        <p className="text-[#5d4037] mb-6 sm:mb-8 text-sm sm:text-base leading-relaxed">請輸入宗門派發的通關令牌以開啟試煉。<br/>(提示：測試請輸入 <strong className="text-[#3e2723] tracking-wider bg-[#efebe9] px-1 rounded">MOS2026</strong>)</p>
+
+        <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+          <input 
+            type="text" required value={code} onChange={(e) => setCode(e.target.value)}
+            placeholder="請輸入通關令牌..."
+            className="w-full bg-[#fafafa] text-[#3e2723] border-2 border-[#bcaaa4] p-3 sm:p-4 text-center text-lg sm:text-xl tracking-wider focus:outline-none focus:border-[#5d4037] focus:bg-white transition-colors rounded-sm uppercase"
+          />
+          {error && <div className="text-[#c62828] text-sm font-bold animate-pulse">{error}</div>}
+          <button type="submit" className="w-full bg-[#2e4c3a] active:bg-[#1b2f23] sm:hover:bg-[#1b2f23] text-[#f1f8e9] font-bold py-3 sm:py-4 px-4 text-lg sm:text-xl tracking-widest shadow-lg border border-[#1b2f23] rounded-sm transition-transform active:scale-95 flex items-center justify-center gap-2">
+            解開陣法 <Sparkles size={18} />
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// === 主程式 ===
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [isActivated, setIsActivated] = useState(false);
+  const [stage, setStage] = useState(0);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const nextStage = () => {
+    window.scrollTo(0, 0);
+    setStage(s => s + 1);
+  };
+
+  // 全域載入中狀態
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#1b100c] flex flex-col items-center justify-center font-serif">
+        <Sparkles className="w-10 h-10 sm:w-12 sm:h-12 text-[#8d6e63] animate-spin-slow mb-4" />
+        <div className="text-[#d7ccc8] text-lg sm:text-xl tracking-[0.3em] animate-pulse">靈力凝聚中...</div>
+      </div>
+    );
+  }
+
+  // 尚未登入
+  if (!user) {
+    return <AuthScreen />;
+  }
+
+  // 已登入但尚未輸入通關令牌
+  if (!isActivated) {
+    return <ActivationScreen onActivate={() => setIsActivated(true)} />;
+  }
+
+  // 根據階段渲染對應的卷軸
+  switch (stage) {
+    case 0:
+      return (
+        <ScrollContainer 
+          bgImage={BACKGROUNDS.intro}
+          title="軌郭山終極入門考驗"
+          subtitle="《 傷 健 合 壁 》"
+          storyContent={
+            <>
+              <div className="flex justify-center mb-4 sm:mb-6">
+                <Shield className="w-12 h-12 sm:w-16 sm:h-16 text-[#8d6e63]" />
+              </div>
+              <p>玩家將扮演前往軌郭山參與終極入門考驗的準門生，只有完成最終試練——打敗熐龍，才有資格成為軌郭山的門生。</p>
+              <p>軋郭山，現存最古老的修行之地，具千萬年歷史。乃今世五大宗門之首，當代修練之人最嚮往的最高殿堂。如若要成為此門的內門弟子，簡直是難如登天。其入門考核堪稱史上最難，古往今來，敗在這臨門一腳的修行者多不勝數。</p>
+              <div className="bg-[#fcf8f2] p-4 sm:p-6 border-l-4 border-[#5d4037] my-6 sm:my-8 shadow-sm text-sm sm:text-base">
+                <span className="font-bold text-[#8d6e63] block mb-2 tracking-widest text-base sm:text-lg">宗主法諭：</span>
+                「各位少俠今日蒞臨敝宗門，皆為一個目的，接受終極入門考驗。近日軌郭山的領地有妖氣散落，此是有邪祟出沒。那便作為本次考驗的試題吧。好好善用你們手上的法器以及錦囊，到底是成是敗，且看少俠能耐。」
+              </div>
+              <div className="text-center mt-8 sm:mt-10">
+                <button onClick={nextStage} className="w-full sm:w-auto bg-[#8d6e63] active:bg-[#5d4037] sm:hover:bg-[#5d4037] text-[#f5efe6] text-lg sm:text-xl font-bold py-4 px-8 sm:px-12 tracking-[0.2em] sm:tracking-[0.3em] shadow-lg border border-[#4e342e] rounded-sm active:scale-95 transition-transform">
+                  踏上修行之路
+                </button>
+              </div>
+            </>
+          }
+        />
+      );
+
+    case 1:
+      return (
+        <ScrollContainer key="stage1"
+          bgImage={BACKGROUNDS.m1}
+          title="第一篇：星圖指引"
+          storyContent={
+            <>
+              <p>宗主離去後，你獲得了一張極為複雜的星圖，正當你一頭霧水時，懷中的通訊玉簡震動了起來。</p>
+              <ChatApp 
+                messages={[
+                  { sender: '系統', text: '叮🔔 您收到一條新訊息' },
+                  { sender: '天地', text: '嘿！你現在是不是一頭霧水呢？那群老頭子還是喜歡那樣故弄玄虛。' },
+                  { sender: '您', text: '閣下是？' },
+                  { sender: '天地', text: '喔，不好意思，唐突了。我應該算是你們的師兄。我姓謝，可以直接以我本名天地稱呼我。' },
+                  { sender: '您', text: '我要獲取對抗妖獸的武器，當務之急要知道它們的所在地，但我手上只有星圖，毫無頭緒，敢問師兄可否指點？' },
+                  { sender: '天地', text: '好，最近活躍的妖獸就只有熐龍。古時航海士倚靠星宿辨別方向，換言之，星圖就是地圖。' },
+                  { sender: '天地', text: '我讓神鳥帶了一些用具給你們，應該有所幫助。' },
+                  { sender: '您', text: '謝謝師兄！' }
+                ]}
+              />
+              <p className="italic text-[#5d4037] text-center my-4 sm:my-6 text-sm sm:text-base">一隻神鳥憑空飛來，丟下幾張標有箭頭的透明卡片，與一張寫著地點的底圖。</p>
+            </>
+          }
+          puzzleElement={
+            <PuzzleForm 
+              question="請找出獲取打敗熐龍寶物的「三個地點」。(請包含文字即可)"
+              hint1="顏色點必需相對應。"
+              hint2="你再想一下⭐️，透明卡片要疊在地圖上才能顯現玄機。"
+              validateFn={(val) => {
+                const text = val.replace(/\s+/g, '');
+                return text.includes('體育館') && text.includes('迷宮') && text.includes('礦石場');
+              }}
+              onSuccess={nextStage}
+            />
+          }
+        />
+      );
+
+    case 2:
+      return (
+        <ScrollContainer key="stage2"
+          bgImage={BACKGROUNDS.m2}
+          title="第二篇：馬鞍山體育館"
+          storyContent={
+            <>
+              <p>這裏是一座灰色的摩登建築，琉璃門感受到你的法力自動為你敞開。你看到一塊石碑，上面刻著此地的歷史。而在古老的壁畫前，站著一個人。</p>
+              <div className="bg-[#fcf8f2] p-4 sm:p-6 border-2 border-[#d7ccc8] my-4 sm:my-6 rounded-sm">
+                <p className="mb-2 sm:mb-4 text-sm sm:text-base">
+                  <span className="text-[#5d4037] font-bold block mb-1">劍仙追隨者：</span>
+                  「這位少俠！據說百萬年前有一位劍仙在這幅壁畫中留下訊息，但我在此參悟數百年，還是看不出個所以然。」
+                </p>
+              </div>
+              <p>你忽然想起自己開始修行前獲得過兩張市井相片，似乎與壁畫有幾分關連。你決定找出相片上的錯誤，解讀劍仙留下的密語。</p>
+            </>
+          }
+          puzzleElement={
+            <PuzzleForm 
+              question="請找出壁畫所隱藏的信息 (請輸入英文)。"
+              hint1="市面上充斥着假資訊，果然只有官方消息才是真實的。"
+              hint2="我們宗門，只求第一，其餘的都是垃圾。將錯處化作英文字，取其首字母。"
+              validateFn={(val) => {
+                const text = val.toLowerCase().replace(/\s+/g, '');
+                return text === 'dragonslayer';
+              }}
+              onSuccess={nextStage}
+            />
+          }
+        />
+      );
+
+    case 3:
+      return (
+        <ScrollContainer key="stage3"
+          bgImage={BACKGROUNDS.m3}
+          title="第三篇：紅瑪瑙謎陣"
+          storyContent={
+            <>
+              <div className="text-center mb-6 sm:mb-8 bg-[#f1f8e9] p-4 sm:p-6 rounded-sm border border-[#a5d6a7]">
+                <Sword className="w-10 h-10 sm:w-12 sm:h-12 text-[#385e46] mx-auto mb-3 sm:mb-4" />
+                <p className="text-lg sm:text-xl font-bold text-[#2e4c3a]">劍仙追隨者恍然大悟，將「神劍」交託於你！</p>
+              </div>
+              <p>按照星圖指引，你走到一座園林當中。忽然怪風吹過，濃煙瀰漫，隨着煙霧消散，你看到了一座以紅瑪瑙為底、大理岩為牆的巨大迷宮。</p>
+              <ChatApp 
+                messages={[
+                  { sender: '系統', text: '叮🔔 您收到一條新訊息' },
+                  { sender: '天地', text: '噢，看來你進入了迷陣。不過也不算是壞事。迷陣當然是用來封印神獸，或者埋藏寶物的！快去破解吧。' },
+                  { sender: '天地', text: '別說我不提醒你，只有一條正確路線，有些瑪瑙石下有陷阱，踩上去便會失去所有修為。祝你好運。' }
+                ]}
+              />
+            </>
+          }
+          puzzleElement={
+            <PuzzleForm 
+              question="請聽從領航錄音，刪除經過的字，找出打破謎陣的口令 (八個字，包含標點符號)。"
+              hint1="圖上的樹有甚麼特別之處呢？"
+              hint2="好馬不吃回頭草，踩過的就不要呢 / 走過的，我們就不要了。"
+              validateFn={(val) => {
+                const text = val.replace(/\s+/g, '');
+                return text.includes('上知天文') && text.includes('下知地理');
+              }}
+              onSuccess={nextStage}
+            />
+          }
+        />
+      );
+
+    case 4:
+      return (
+        <ScrollContainer key="stage4"
+          bgImage={BACKGROUNDS.m4}
+          title="第四篇：軌郭石礦場"
+          storyContent={
+            <>
+              <div className="text-center mb-6 sm:mb-8 bg-[#e1f5fe] p-4 sm:p-6 rounded-sm border border-[#81d4fa]">
+                <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-[#81d4fa] shadow-[0_0_15px_#29b6f6] mx-auto mb-3 sm:mb-4 flex items-center justify-center border-2 border-white">
+                  <Sparkles className="text-white w-6 h-6 sm:w-8 sm:h-8" />
+                </div>
+                <p className="text-lg sm:text-xl font-bold text-[#0277bd]">口令正確！陣法破除，恭喜獲得「水晶球」。</p>
+              </div>
+              <p>你來到一個舊礦場。以你目前的武功，尚未能夠打敗熐龍，你深知需要這裡特產的「附魔玉石」來大幅提升戰鬥力。</p>
+              <p>地上散落著一個古老的指南針與幾張殘破的壁畫點陣圖。</p>
+            </>
+          }
+          puzzleElement={
+            <PuzzleForm 
+              question="透過點與線的遊戲排列文字，找出打破玉石封印的口令 (請輸入英文單字)。"
+              hint1="走路要看路，指南針必可以指引你正確的方向。"
+              hint2="開採玉石，怎麼能不用工具呢？"
+              validateFn={(val) => {
+                const text = val.toLowerCase().replace(/\s+/g, '');
+                return text === 'magiccrystal';
+              }}
+              onSuccess={nextStage}
+            />
+          }
+        />
+      );
+
+    case 5:
+      return (
+        <ScrollContainer key="stage5"
+          bgImage={BACKGROUNDS.m5}
+          title="第五篇：熐龍巢穴"
+          storyContent={
+            <>
+               <div className="text-center mb-6 sm:mb-8 bg-[#e8f5e9] p-4 sm:p-6 rounded-sm border border-[#a5d6a7]">
+                <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-[#66bb6a] shadow-[0_0_15px_#43a047] mx-auto mb-3 sm:mb-4 flex items-center justify-center border-2 border-white">
+                  <Shield className="text-white w-6 h-6 sm:w-8 sm:h-8" />
+                </div>
+                <p className="text-lg sm:text-xl font-bold text-[#2e7d32]">封印解除！恭喜獲得「附魔玉石」。</p>
+              </div>
+              <p>剛才獲得的水晶球發出微弱的光芒，指引你抵達了充滿狂暴妖氣的熐龍巢穴！但在巢穴入口，你看到了一群守護獸。</p>
+              <ChatApp 
+                messages={[
+                  { sender: '系統', text: '【抵達熐龍巢穴】' },
+                  { sender: '天地', text: '啊！這裏我很熟悉，正正就是熐龍的老巢！我們趕快過去吧！' },
+                  { sender: '您', text: '師兄，為什麼有這麼多動物在這裏？' },
+                  { sender: '天地', text: '他們是守護獸，能夠削弱妖獸。你可曾聽過一首詩？' },
+                  { sender: '天地', text: '天臨高貴仙，湖中潔白舞。鵝群泛水波，美境散羽毛。' },
+                  { sender: '您', text: '原來關鍵神獸是天鵝！但牠似乎被陣法封印了。' },
+                  { sender: '天地', text: '綠茵匆匆，萬物生長。紅日當空，寸土不生。相生相剋，正正負負。加加減減，由是千古。' }
+                ]}
+              />
+            </>
+          }
+          puzzleElement={
+            <PuzzleForm 
+              question="請按照五行對照表與寶石數量，依次運算解除天鵝的封印 (請輸入數字密碼)。"
+              hint1="雞有雞冠，看來天鵝也不服輸呢 (注意頭上的寶石)。"
+              hint2="五行之規，依箭行事。"
+              inputMode="numeric"
+              validateFn={(val) => {
+                return val.trim() === '123';
+              }}
+              onSuccess={nextStage}
+            />
+          }
+        />
+      );
+
+    case 6:
+      return (
+        <ScrollContainer key="stage6"
+          bgImage={BACKGROUNDS.boss}
+          title="最終考驗：血戰熐龍"
+          storyContent={
+            <>
+              <p className="text-lg sm:text-xl font-bold text-[#c62828] mb-3 sm:mb-4">只聽見一聲鳴叫，天鵝展開雙翅，施展法術，妖氣顯著減弱！</p>
+              <p>你與其他準門生緩慢向熐龍的巢穴深處進發。然而，你們謹慎的舉動還是引起了熐龍的注意！一陣腥風血雨襲來，熐龍發動攻擊，你們瞬間落於下風，眾人皆身負重傷。</p>
+              
+              <div className="bg-[#fcf8f2] p-4 sm:p-6 border-l-4 border-[#c62828] my-6 sm:my-8 shadow-sm">
+                <span className="font-bold text-[#b71c1c] block mb-2 tracking-widest text-base sm:text-lg">神秘場外傳音：</span>
+                <span className="text-sm sm:text-base">「哎呀！你們怎麼變成這種慘況了？你們這樣各有各打的是要怎樣打敗熐龍？天鵝只是把它削弱，以你們這些毛頭小子的能力，是要通力合作才會有勝算！我現在為你們施法痊癒，繼續作戰！」</span>
+              </div>
+            </>
+          }
+          puzzleElement={
+            <div className="bg-[#fcf8f2] p-5 sm:p-8 rounded-sm border border-[#d7ccc8] text-center font-serif shadow-inner">
+              <h3 className="text-xl sm:text-2xl font-bold text-[#c62828] mb-4 sm:mb-6 tracking-widest border-b-2 border-[#ffcdd2] pb-3">匯聚眾人之力</h3>
+              <p className="text-[#3e2723] mb-6 sm:mb-8 text-base sm:text-lg">你願意信任這些素不相識的同伴，並貢獻自己的法力嗎？<br className="hidden sm:block"/>(請注入 1 至 10 點法力)</p>
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                const val = parseInt(e.target.mana.value);
+                if (val >= 1 && val <= 10) nextStage();
+                else alert("陣法不穩！請準確注入 1 到 10 之間的數字！");
+              }}>
+                <input 
+                  name="mana"
+                  type="text" 
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  min="1" max="10" required
+                  placeholder="輸入法力值 (1-10)"
+                  className="w-full max-w-[200px] sm:max-w-xs mx-auto block bg-white text-[#c62828] border-2 border-[#ef9a9a] p-3 sm:p-4 text-center text-xl sm:text-2xl font-bold mb-6 sm:mb-8 focus:outline-none focus:border-[#c62828] rounded-sm"
+                />
+                <button type="submit" className="w-full bg-[#c62828] active:bg-[#b71c1c] sm:hover:bg-[#b71c1c] text-white font-bold py-3 sm:py-4 px-4 sm:px-6 text-lg sm:text-xl tracking-[0.2em] sm:tracking-[0.3em] shadow-[0_5px_15px_rgba(198,40,40,0.4)] active:scale-95 transition-transform rounded-sm">
+                  獻出法力，破滅龍魂！
+                </button>
+              </form>
+            </div>
+          }
+        />
+      );
+
+    case 7:
+      return (
+        <ScrollContainer key="stage7"
+          bgImage={BACKGROUNDS.choice}
+          title="結語：羽化坡前"
+          storyContent={
+            <>
+              <div className="text-center mb-6 sm:mb-8 border-b border-[#d7ccc8] pb-6 sm:pb-8">
+                <Sparkles className="w-12 h-12 sm:w-16 sm:h-16 text-[#f57f17] mx-auto mb-3 sm:mb-4 animate-pulse" />
+                <h2 className="text-xl sm:text-2xl font-bold text-[#e65100] mb-2">熐龍轟然倒下！</h2>
+                <p className="text-[#5d4037] text-base sm:text-lg">眾人的法力聚集成巨大的光球，將惡龍擊斃。<br/>你獲得了極品至寶：<strong className="text-[#d84315] text-lg sm:text-xl">龍鱗</strong>。</p>
+              </div>
+
+              <p>你和同伴走出巢穴，發現有一個身影在此等候。你總算見到了他的廬山真面目——一直以玉簡傳音相助的師兄<strong>謝天地</strong>。</p>
+              <p>你們來到「羽化坡」前，只要穿過這裡，就能成為正式弟子。但你發現謝天地坐在木輪椅上，徘徊不前。</p>
+
+              <div className="bg-[#efebe9] p-4 sm:p-6 border-2 border-[#d7ccc8] my-4 sm:my-6 space-y-3 sm:space-y-4 rounded-sm text-sm sm:text-base">
+                <p>
+                  <span className="text-[#3e2723] font-bold">謝天地苦笑：</span>
+                  「我並不是正式的入門弟子，因為這羽化坡表面凹凸不平，我的輪椅上不去。似乎只有龍鱗才能填平它...」
+                </p>
+                <p>
+                  <span className="text-[#8d6e63] font-bold">旁人驚呼：</span>
+                  「龍鱗服用可增加五千年修為，百病不侵！用來修地板？簡直是暴殄天物！」
+                </p>
+              </div>
+              
+              <div className="text-center mt-8 sm:mt-12 space-y-4 sm:space-y-6">
+                <p className="text-lg sm:text-xl font-bold text-[#3e2723] px-2">你想起這一路上受到的照顧... 你要如何抉擇？</p>
+                <div className="flex flex-col gap-3 sm:gap-6 sm:flex-row justify-center mt-4">
+                  <button onClick={() => { window.scrollTo(0, 0); setStage(8); }} className="w-full sm:w-auto bg-[#2e4c3a] active:bg-[#1b2f23] sm:hover:bg-[#1b2f23] text-[#f1f8e9] font-bold py-4 px-6 sm:px-8 text-base sm:text-lg tracking-widest shadow-lg rounded-sm active:scale-95 transition-transform">
+                    捨棄修為，修補斜坡
+                  </button>
+                  <button onClick={() => { window.scrollTo(0, 0); setStage(9); }} className="w-full sm:w-auto bg-[#5d4037] active:bg-[#3e2723] sm:hover:bg-[#3e2723] text-[#f5efe6] font-bold py-4 px-6 sm:px-8 text-base sm:text-lg tracking-widest shadow-lg rounded-sm active:scale-95 transition-transform">
+                    保留龍鱗，獨自登頂
+                  </button>
+                </div>
+              </div>
+            </>
+          }
+        />
+      );
+
+    case 8: // Good Ending
+      return (
+        <ScrollContainer key="stage8"
+          bgImage={BACKGROUNDS.good}
+          title="大結局：傷健合壁"
+          storyContent={
+            <div className="text-center py-6 sm:py-10 space-y-6 sm:space-y-8">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-[#f1f8e9] border-4 border-[#2e4c3a] mx-auto flex items-center justify-center shadow-2xl">
+                <Map className="w-10 h-10 sm:w-12 sm:h-12 text-[#2e4c3a]" />
+              </div>
+              <p className="text-base sm:text-xl leading-relaxed sm:leading-loose">
+                你把鱗片放在了羽化坡上，一整片的凹凸瞬間「夷為平地」。<br/>其他弟子見狀，也紛紛效仿。
+              </p>
+              <p className="text-base sm:text-xl leading-relaxed sm:leading-loose">
+                謝天地推動手上的輪椅，一寸一寸地攀登着。<br/>他低著頭，口中不停地重複着「謝謝，謝謝⋯⋯」
+              </p>
+              <div className="text-xl sm:text-3xl font-black text-[#2e4c3a] mt-8 sm:mt-12 tracking-[0.2em] sm:tracking-[0.3em] border-y-2 border-[#2e4c3a] py-4 sm:py-6">
+                「從今天起，你們便是軌郭山的入門弟子！」
+              </div>
+              <button onClick={() => setStage(0)} className="inline-block text-[#8d6e63] active:text-[#5d4037] underline tracking-widest mt-6 sm:mt-10 p-2">
+                重啟輪迴 (重新開始)
+              </button>
+            </div>
+          }
+        />
+      );
+
+    case 9: // Bad Ending
+      return (
+        <ScrollContainer key="stage9"
+          bgImage={BACKGROUNDS.bad}
+          title="大結局：獨登大道"
+          storyContent={
+            <div className="text-center py-6 sm:py-10 space-y-6 sm:space-y-8">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-[#fcf8f2] border-4 border-[#5d4037] mx-auto flex items-center justify-center shadow-2xl">
+                <Scroll className="w-10 h-10 sm:w-12 sm:h-12 text-[#5d4037]" />
+              </div>
+              <p className="text-base sm:text-xl leading-relaxed sm:leading-loose">
+                修仙之路本就殘酷，你選擇保留珍貴的龍鱗。<br/>服下後，你修為大增，一步登天。
+              </p>
+              <p className="text-base sm:text-xl leading-relaxed sm:leading-loose">
+                你獨自踏上凹凸不平的羽化坡，成為了軌郭山的耀眼新星。<br/>但在無數個修煉的夜晚，你偶爾會想起山門外，<br className="hidden sm:block"/>那個坐在輪椅上落寞的身影。
+              </p>
+              <div className="text-xl sm:text-3xl font-black text-[#5d4037] mt-8 sm:mt-12 tracking-[0.2em] sm:tracking-[0.3em] border-y-2 border-[#5d4037] py-4 sm:py-6">
+                ～ 考驗結束 ～
+              </div>
+              <button onClick={() => setStage(0)} className="inline-block text-[#8d6e63] active:text-[#5d4037] underline tracking-widest mt-6 sm:mt-10 p-2">
+                重啟輪迴 (重新開始)
+              </button>
+            </div>
+          }
+        />
+      );
+
+    default:
+      return null;
+  }
+}

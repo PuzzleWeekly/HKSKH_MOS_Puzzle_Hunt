@@ -1,0 +1,37 @@
+[debug] [2026-07-17T06:10:38.672Z] ----------------------------------------------------------------------
+[debug] [2026-07-17T06:10:38.679Z] Command:       /opt/homebrew/Cellar/node/24.3.0/bin/node /opt/homebrew/bin/firebase init
+[debug] [2026-07-17T06:10:38.680Z] CLI Version:   15.12.0
+[debug] [2026-07-17T06:10:38.680Z] Platform:      darwin
+[debug] [2026-07-17T06:10:38.680Z] Node Version:  v24.3.0
+[debug] [2026-07-17T06:10:38.680Z] Time:          Fri Jul 17 2026 14:10:38 GMT+0800 (Hong Kong Standard Time)
+[debug] [2026-07-17T06:10:38.680Z] ----------------------------------------------------------------------
+[debug] 
+[info] 
+     ######## #### ########  ######## ########     ###     ######  ########
+     ##        ##  ##     ## ##       ##     ##  ##   ##  ##       ##
+     ######    ##  ########  ######   ########  #########  ######  ######
+     ##        ##  ##    ##  ##       ##     ## ##     ##       ## ##
+     ##       #### ##     ## ######## ########  ##     ##  ######  ########
+
+You're about to initialize a Firebase project in this directory:
+
+  /Users/pw/Desktop/HKSKU_MOS_Puzzle_Hunt
+
+[info] 
+=== Project Setup
+[info] 
+[info] First, let's associate this project directory with a Firebase project.
+[info] You can create multiple project aliases by running firebase use --add, 
+[info] 
+[debug] [2026-07-17T06:10:48.393Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-07-17T06:10:48.394Z] > authorizing via signed-in user (pw@puzzle-weekly.com)
+[debug] [2026-07-17T06:10:48.396Z] Checked if tokens are valid: false, expires at: 1784268420379
+[debug] [2026-07-17T06:10:48.396Z] Checked if tokens are valid: false, expires at: 1784268420379
+[debug] [2026-07-17T06:10:48.397Z] > refreshing access token with scopes: []
+[debug] [2026-07-17T06:10:48.401Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2026-07-17T06:10:48.401Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-07-17T06:10:48.575Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2026-07-17T06:10:48.575Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-07-17T06:10:48.592Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects pageSize=100
+[debug] [2026-07-17T06:10:49.373Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects 200
+[debug] [2026-07-17T06:10:49.373Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects [omitted]
