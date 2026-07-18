@@ -5,46 +5,137 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>軌郭山陣法管理樞紐 (Admin)</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700&display=swap" rel="stylesheet">
   <style>
     body { font-family: 'Noto Serif TC', serif; background-color: #fcf8f2; }
+    .bg-rice-paper { background-image: url('https://www.transparenttextures.com/patterns/rice-paper.png'); }
+    .fade-in { animation: fadeIn 0.3s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
   </style>
 </head>
-<body class="p-4 sm:p-8">
+<body class="bg-rice-paper text-slate-800 min-h-screen">
 
-  <div class="max-w-4xl mx-auto bg-white p-6 sm:p-8 rounded-lg shadow-xl border border-gray-200">
-    <div class="flex flex-col sm:flex-row justify-between items-center border-b pb-4 mb-6">
-      <h1 class="text-3xl font-bold text-gray-800">軌郭山 - 陣法管理樞紐</h1>
-      <button onclick="fetchTeams()" class="mt-4 sm:mt-0 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow flex items-center gap-2">
-        重新整理進度
-      </button>
+  <!-- Toast 提示組件 -->
+  <div id="toast-container" class="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2"></div>
+
+  <!-- 確認視窗 Modal -->
+  <div id="confirm-modal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 fade-in">
+    <div class="bg-white p-6 rounded-lg shadow-2xl max-w-sm w-full border-2 border-slate-300">
+      <h3 id="confirm-title" class="text-xl font-bold mb-2 text-slate-800 flex items-center gap-2"><i data-lucide="alert-triangle" class="text-amber-500"></i> 系統確認</h3>
+      <p id="confirm-message" class="text-slate-600 mb-6 leading-relaxed">您確定要執行此操作嗎？</p>
+      <div class="flex justify-end gap-3">
+        <button onclick="closeConfirmModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded font-bold transition-colors">取消</button>
+        <button id="confirm-action-btn" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded font-bold transition-colors shadow-lg shadow-red-600/30">確認執行</button>
+      </div>
     </div>
+  </div>
 
-    <div class="bg-blue-50 p-6 rounded-lg border border-blue-100 mb-8">
-      <h2 class="text-xl font-bold text-blue-900 mb-4">派發新通關令牌 (新增隊伍)</h2>
-      <form onsubmit="addTeam(event)" class="flex flex-col sm:flex-row gap-4">
-        <input type="text" name="newCode" required placeholder="例如：TEAM-A, MOS2026..." class="flex-1 p-3 border rounded focus:ring-2 focus:ring-blue-500 uppercase font-mono">
-        <button type="submit" class="bg-green-600 hover:bg-green-700 text-white font-bold px-6 py-3 rounded shadow">
-          建立陣法結界
-        </button>
+  <!-- 修改密碼 Modal -->
+  <div id="password-modal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 fade-in">
+    <div class="bg-white p-6 md:p-8 rounded-lg shadow-2xl max-w-sm w-full border-2 border-[#8d6e63]">
+      <div class="flex justify-between items-center border-b-2 border-[#d7ccc8] pb-3 mb-4">
+        <h3 class="text-xl font-bold text-[#3e2723] flex items-center gap-2"><i data-lucide="key" class="text-[#8d6e63]"></i> 修改樞紐密鑰</h3>
+        <button onclick="closePasswordModal()" class="text-slate-400 hover:text-red-500"><i data-lucide="x"></i></button>
+      </div>
+      <form onsubmit="changePassword(event)" class="space-y-4">
+        <div>
+          <label class="block text-sm font-bold text-slate-600 mb-1">當前密碼</label>
+          <input type="password" id="old-pass" required class="w-full border-2 border-slate-200 p-2 rounded focus:outline-none focus:border-[#8d6e63]">
+        </div>
+        <div>
+          <label class="block text-sm font-bold text-slate-600 mb-1">新密碼</label>
+          <input type="password" id="new-pass" required class="w-full border-2 border-slate-200 p-2 rounded focus:outline-none focus:border-[#8d6e63]">
+        </div>
+        <button type="submit" class="w-full bg-[#3e2723] hover:bg-[#1b100c] text-white font-bold py-3 rounded shadow-lg transition-colors mt-2">確認修改</button>
       </form>
-      <div id="add-msg" class="mt-2 text-sm font-bold"></div>
+    </div>
+  </div>
+
+  <!-- 登入介面 -->
+  <div id="login-screen" class="min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white p-8 rounded-lg shadow-2xl border-2 border-[#c1a58d] max-w-md w-full relative overflow-hidden">
+      <div class="absolute top-0 left-0 right-0 h-2 bg-[#8d6e63]"></div>
+      <div class="text-center mb-8 mt-2">
+        <i data-lucide="shield-check" class="w-16 h-16 text-[#8d6e63] mx-auto mb-3"></i>
+        <h1 class="text-3xl font-black text-[#3e2723] tracking-widest">陣法管理樞紐</h1>
+        <p class="text-slate-500 mt-2 font-bold tracking-wider">軌郭山 - 考驗後台</p>
+      </div>
+      <form onsubmit="handleLogin(event)" class="space-y-5">
+        <div>
+          <div class="flex items-center border-2 border-slate-200 p-3 rounded focus-within:border-[#8d6e63] bg-slate-50 transition-colors">
+            <i data-lucide="user" class="text-slate-400 mr-3"></i>
+            <input type="text" id="username" placeholder="登入名稱 (預設: admin)" required class="w-full bg-transparent focus:outline-none text-lg">
+          </div>
+        </div>
+        <div>
+          <div class="flex items-center border-2 border-slate-200 p-3 rounded focus-within:border-[#8d6e63] bg-slate-50 transition-colors">
+            <i data-lucide="lock" class="text-slate-400 mr-3"></i>
+            <input type="password" id="password" placeholder="密碼 (預設: admin)" required class="w-full bg-transparent focus:outline-none text-lg">
+          </div>
+        </div>
+        <button type="submit" id="login-btn" class="w-full bg-[#2e4c3a] hover:bg-[#1b2f23] text-white font-bold py-4 rounded text-lg tracking-widest shadow-lg shadow-emerald-900/30 transition-transform active:scale-95">開啟樞紐</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 管理員儀表板 (登入後顯示) -->
+  <div id="dashboard-screen" class="hidden p-4 md:p-8 max-w-6xl mx-auto">
+    <!-- Header -->
+    <div class="bg-white p-6 rounded-lg shadow-lg border border-slate-200 mb-6 flex flex-col sm:flex-row justify-between items-center gap-4 relative overflow-hidden">
+      <div class="absolute top-0 left-0 right-0 h-1 bg-[#8d6e63]"></div>
+      <div class="flex items-center gap-4">
+        <div class="p-3 bg-[#f5efe6] rounded-full"><i data-lucide="database" class="text-[#8d6e63] w-8 h-8"></i></div>
+        <div>
+          <h1 class="text-2xl font-black text-[#3e2723] tracking-widest">軌郭山考驗 - 管理樞紐</h1>
+          <p class="text-sm text-slate-500 font-bold">歡迎回來，Administrator</p>
+        </div>
+      </div>
+      <div class="flex gap-3">
+        <button onclick="openPasswordModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded flex items-center gap-2 border border-slate-300 transition-colors"><i data-lucide="key" class="w-4 h-4"></i> 修改密碼</button>
+        <button onclick="logout()" class="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded flex items-center gap-2 border border-red-200 transition-colors"><i data-lucide="log-out" class="w-4 h-4"></i> 登出</button>
+      </div>
     </div>
 
-    <div>
-      <h2 class="text-xl font-bold text-gray-800 mb-4">各路修士通關狀況</h2>
+    <!-- Control Panel -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div class="md:col-span-1 bg-emerald-50 p-6 rounded-lg border border-emerald-200 shadow-sm h-full flex flex-col justify-center">
+        <h2 class="text-lg font-bold text-emerald-900 mb-4 flex items-center gap-2"><i data-lucide="plus-circle"></i> 派發新通關令牌</h2>
+        <form onsubmit="addTeam(event)" class="flex flex-col gap-3">
+          <input type="text" id="newCode" required placeholder="例如：TEAM-A" class="p-3 border-2 border-emerald-200 rounded focus:outline-none focus:border-emerald-500 uppercase font-mono bg-white">
+          <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-3 rounded shadow-md transition-colors flex justify-center items-center gap-2">建立陣法結界 <i data-lucide="sparkles" class="w-4 h-4"></i></button>
+        </form>
+      </div>
+      
+      <div class="md:col-span-2 bg-white p-6 rounded-lg border border-slate-200 shadow-sm flex items-center justify-between">
+         <div>
+           <h2 class="text-lg font-bold text-slate-800 mb-2">管理員權限說明</h2>
+           <ul class="text-sm text-slate-600 space-y-2 font-medium">
+             <li>🔸 <strong class="text-amber-600">調整關卡：</strong> 直接切換關卡可幫助卡關玩家過關，或讓玩家重玩。</li>
+             <li>🔸 <strong class="text-red-600">踢除隊員：</strong> 若玩家入錯隊伍，可點擊隊員 Email 旁的 (X) 將其踢除。</li>
+           </ul>
+         </div>
+         <button onclick="fetchTeams()" class="h-fit px-6 py-3 bg-[#3e2723] hover:bg-[#1b100c] text-[#f5efe6] font-bold rounded shadow-lg flex items-center gap-2 transition-transform active:scale-95"><i data-lucide="refresh-cw"></i> 刷新進度</button>
+      </div>
+    </div>
+
+    <!-- Data Table -->
+    <div class="bg-white rounded-lg shadow-lg border border-slate-200 overflow-hidden">
+      <div class="bg-slate-50 p-4 border-b border-slate-200 font-bold text-slate-700 flex items-center gap-2">
+        <i data-lucide="users"></i> 各路修士通關狀況
+      </div>
       <div class="overflow-x-auto">
         <table class="w-full text-left border-collapse">
           <thead>
-            <tr class="bg-gray-100 border-b-2 border-gray-300">
-              <th class="p-3 font-bold text-gray-700">通關令牌 (Team Code)</th>
-              <th class="p-3 font-bold text-gray-700">目前關卡</th>
-              <th class="p-3 font-bold text-gray-700">隊員數量</th>
-              <th class="p-3 font-bold text-gray-700">操作</th>
+            <tr class="bg-slate-100/50 border-b-2 border-slate-300 text-sm tracking-wider">
+              <th class="p-4 font-bold text-slate-600 w-1/5">通關令牌 (Team Code)</th>
+              <th class="p-4 font-bold text-slate-600 w-1/4">目前關卡 (可強制修改)</th>
+              <th class="p-4 font-bold text-slate-600">綁定隊員清單</th>
+              <th class="p-4 font-bold text-slate-600 text-center w-24">操作</th>
             </tr>
           </thead>
-          <tbody id="team-list" class="divide-y divide-gray-200">
-            <tr><td colspan="4" class="p-4 text-center text-gray-500">載入中...</td></tr>
+          <tbody id="team-list" class="divide-y divide-slate-100">
+            <tr><td colspan="4" class="p-10 text-center text-slate-500 font-bold"><i data-lucide="loader" class="animate-spin inline-block mr-2"></i> 讀取資料中...</td></tr>
           </tbody>
         </table>
       </div>
@@ -53,7 +144,7 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { getFirestore, doc, setDoc, getDocs, updateDoc, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    import { getFirestore, doc, setDoc, getDoc, getDocs, updateDoc, collection, deleteDoc, arrayRemove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyBadB--5Es1xkGaS3qFFepNVySVyQEMIZg",
@@ -68,87 +159,252 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // 取得並顯示所有隊伍資料
+    // 關卡對應表 (供 Admin 下拉選單使用)
+    const STAGE_MAP = [
+      "0. 序章 (故事背景)",
+      "1. 第一關 (星圖指引)",
+      "2. 第二關 (體育館壁畫)",
+      "3. 第三關 (紅瑪瑙謎陣)",
+      "4. 第四關 (礦場玉石)",
+      "5. 第五關 (熐龍巢穴)",
+      "6. 最終戰 (決戰熐龍)",
+      "7. 抉擇 (羽化坡前)",
+      "8. 好結局 (傷健合壁)",
+      "9. 壞結局 (獨登大道)"
+    ];
+
+    let actualAdminPassword = 'admin'; // 預設密碼
+
+    // --- UI Helpers (Toast & Modal) ---
+    window.showToast = (message, type = 'success') => {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      const bgClass = type === 'success' ? 'bg-emerald-600' : type === 'error' ? 'bg-red-600' : 'bg-slate-800';
+      toast.className = `${bgClass} text-white px-6 py-3 rounded shadow-xl font-bold fade-in flex items-center gap-2`;
+      toast.innerHTML = `<i data-lucide="${type === 'success' ? 'check-circle' : 'alert-circle'}" class="w-5 h-5"></i> ${message}`;
+      container.appendChild(toast);
+      lucide.createIcons();
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    };
+
+    let confirmCallback = null;
+    window.openConfirmModal = (title, message, callback) => {
+      document.getElementById('confirm-title').innerHTML = `<i data-lucide="alert-triangle" class="text-amber-500"></i> ${title}`;
+      document.getElementById('confirm-message').innerText = message;
+      document.getElementById('confirm-modal').classList.remove('hidden');
+      lucide.createIcons();
+      confirmCallback = callback;
+    };
+    window.closeConfirmModal = () => { document.getElementById('confirm-modal').classList.add('hidden'); confirmCallback = null; };
+    
+    document.getElementById('confirm-action-btn').addEventListener('click', () => {
+      if(confirmCallback) confirmCallback();
+      closeConfirmModal();
+    });
+
+    // --- Auth Logic ---
+    window.handleLogin = async (e) => {
+      e.preventDefault();
+      const user = document.getElementById('username').value.trim();
+      const pass = document.getElementById('password').value.trim();
+      const btn = document.getElementById('login-btn');
+      
+      if(user !== 'admin') { showToast('未知的登入名稱！', 'error'); return; }
+      
+      btn.innerHTML = '<i data-lucide="loader" class="animate-spin"></i> 驗證中...';
+      btn.disabled = true;
+
+      try {
+        // 從資料庫獲取最新密碼，若無紀錄則採用預設 'admin'
+        const docRef = doc(db, "teams", "ADMIN_AUTH");
+        const docSnap = await getDoc(docRef);
+        if(docSnap.exists() && docSnap.data().password) {
+           actualAdminPassword = docSnap.data().password;
+        } else {
+           // 初始化隱藏的 Admin 檔案
+           await setDoc(docRef, { password: 'admin' });
+        }
+
+        if(pass === actualAdminPassword) {
+           document.getElementById('login-screen').classList.add('hidden');
+           document.getElementById('dashboard-screen').classList.remove('hidden');
+           document.getElementById('password').value = '';
+           showToast('登入成功，歡迎回來！');
+           fetchTeams();
+        } else {
+           showToast('密鑰錯誤，陣法拒絕存取！', 'error');
+        }
+      } catch(err) {
+        showToast('無法連線至資料庫，請檢查網路或權限規則', 'error');
+        console.error(err);
+      } finally {
+        btn.innerHTML = '開啟樞紐'; btn.disabled = false;
+      }
+    };
+
+    window.logout = () => {
+      document.getElementById('dashboard-screen').classList.add('hidden');
+      document.getElementById('login-screen').classList.remove('hidden');
+      showToast('已安全登出陣法樞紐。');
+    };
+
+    // --- Password Change Logic ---
+    window.openPasswordModal = () => {
+      document.getElementById('old-pass').value = '';
+      document.getElementById('new-pass').value = '';
+      document.getElementById('password-modal').classList.remove('hidden');
+    };
+    window.closePasswordModal = () => document.getElementById('password-modal').classList.add('hidden');
+    
+    window.changePassword = async (e) => {
+      e.preventDefault();
+      const oldP = document.getElementById('old-pass').value;
+      const newP = document.getElementById('new-pass').value;
+      
+      if(oldP !== actualAdminPassword) { showToast('當前密碼不正確！', 'error'); return; }
+      if(newP.length < 4) { showToast('新密碼長度需至少4個字元', 'error'); return; }
+
+      try {
+        await updateDoc(doc(db, "teams", "ADMIN_AUTH"), { password: newP });
+        actualAdminPassword = newP;
+        showToast('密碼修改成功！下次請使用新密碼登入。');
+        closePasswordModal();
+      } catch(err) {
+        showToast('修改失敗，請稍後再試。', 'error');
+      }
+    };
+
+    // --- Data Management Logic ---
     window.fetchTeams = async () => {
       const tbody = document.getElementById('team-list');
-      tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-gray-500">同步靈力中...</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="4" class="p-10 text-center text-slate-500 font-bold"><i data-lucide="loader" class="animate-spin inline-block mr-2"></i> 同步靈力中...</td></tr>';
+      lucide.createIcons();
       
       try {
         const querySnapshot = await getDocs(collection(db, "teams"));
         tbody.innerHTML = '';
         
-        if(querySnapshot.empty) {
-          tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-gray-500">目前尚無任何通關令牌記錄。</td></tr>';
-          return;
-        }
-
+        let hasData = false;
         querySnapshot.forEach((docSnap) => {
+          if(docSnap.id === 'ADMIN_AUTH') return; // 略過系統檔案
+          hasData = true;
           const data = docSnap.data();
-          const membersCount = data.members ? data.members.length : 0;
-          let stageLabel = data.stage;
-          if (data.stage === 8) stageLabel = "8 (通關-好結局)";
-          if (data.stage === 9) stageLabel = "9 (通關-壞結局)";
+          const members = data.members || [];
+          const currentStage = data.stage || 0;
+
+          // 生成關卡下拉選單
+          let stageOptions = STAGE_MAP.map((name, idx) => 
+            `<option value="${idx}" ${idx === currentStage ? 'selected' : ''}>${name}</option>`
+          ).join('');
+
+          // 生成成員名單 Tag
+          let membersHtml = members.length === 0 
+            ? `<span class="text-slate-400 italic text-sm">無隊員綁定</span>` 
+            : members.map(email => 
+                `<span class="inline-flex items-center gap-1 bg-sky-100 text-sky-800 border border-sky-200 px-2 py-1 rounded text-xs font-bold mb-1 mr-1">
+                  ${email} 
+                  <button type="button" onclick="removeMember('${docSnap.id}', '${email}')" class="text-sky-600 hover:text-red-600 hover:bg-white rounded-full p-[2px] transition-colors" title="踢除此隊員">
+                    <i data-lucide="x" class="w-3 h-3"></i>
+                  </button>
+                </span>`
+              ).join('');
 
           const row = `
-            <tr class="hover:bg-gray-50">
-              <td class="p-3 font-mono font-bold text-blue-800">${docSnap.id}</td>
-              <td class="p-3"><span class="bg-gray-200 px-2 py-1 rounded text-sm">${stageLabel}</span></td>
-              <td class="p-3">${membersCount} 人</td>
-              <td class="p-3">
-                <button onclick="resetTeam('${docSnap.id}')" class="text-sm text-red-600 hover:text-red-800 border border-red-200 hover:bg-red-50 px-3 py-1 rounded transition-colors">
-                  重置回起點(關卡0)
+            <tr class="hover:bg-slate-50 border-b border-slate-100 transition-colors">
+              <td class="p-4 font-mono font-bold text-slate-700 text-lg align-top">
+                <span class="bg-slate-200 px-2 py-1 rounded border border-slate-300">${docSnap.id}</span>
+              </td>
+              <td class="p-4 align-top">
+                <select onchange="updateStage('${docSnap.id}', this.value)" class="w-full p-2 border border-slate-300 rounded bg-white text-sm focus:outline-none focus:border-[#8d6e63] font-bold text-slate-700">
+                  ${stageOptions}
+                </select>
+                <div class="text-xs text-slate-400 mt-1">* 變更後玩家畫面將即時跳轉</div>
+              </td>
+              <td class="p-4 align-top">
+                <div class="flex flex-wrap gap-1">${membersHtml}</div>
+              </td>
+              <td class="p-4 text-center align-top">
+                <button onclick="deleteTeam('${docSnap.id}')" class="px-3 py-2 bg-white text-red-500 hover:text-white hover:bg-red-500 border border-red-200 rounded text-sm font-bold transition-colors shadow-sm flex items-center justify-center w-full gap-1">
+                  <i data-lucide="trash-2" class="w-4 h-4"></i> 解散隊伍
                 </button>
               </td>
             </tr>
           `;
           tbody.insertAdjacentHTML('beforeend', row);
         });
+
+        if(!hasData) tbody.innerHTML = '<tr><td colspan="4" class="p-10 text-center text-slate-500 font-bold">目前尚無任何通關令牌記錄。</td></tr>';
+        lucide.createIcons();
+
       } catch(err) {
         console.error(err);
-        tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-red-500">讀取失敗，請檢查權限設定。</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" class="p-10 text-center text-red-500 font-bold">讀取失敗，請檢查權限設定。</td></tr>';
       }
     };
 
-    // 新增隊伍令牌
     window.addTeam = async (e) => {
       e.preventDefault();
-      const code = e.target.newCode.value.trim().toUpperCase();
-      const msgDiv = document.getElementById('add-msg');
-      msgDiv.innerText = "建立中..."; msgDiv.className = "mt-2 text-sm font-bold text-blue-600";
+      const codeInput = document.getElementById('newCode');
+      const code = codeInput.value.trim().toUpperCase();
+      
+      if(code === 'ADMIN_AUTH' || code.length < 3) {
+        showToast('無效的令牌名稱 (至少需3個字元)', 'error'); return;
+      }
       
       try {
-        await setDoc(doc(db, "teams", code), {
-          stage: 0,
-          members: []
-        });
-        msgDiv.innerText = `成功建立令牌：${code}`;
-        msgDiv.className = "mt-2 text-sm font-bold text-green-600";
-        e.target.reset();
-        fetchTeams(); // 重新整理列表
+        const docRef = doc(db, "teams", code);
+        const snap = await getDoc(docRef);
+        if(snap.exists()) { showToast('此令牌已存在！', 'error'); return; }
+
+        await setDoc(docRef, { stage: 0, members: [] });
+        showToast(`成功建立令牌：${code}`);
+        codeInput.value = '';
+        fetchTeams(); 
       } catch (err) {
-        msgDiv.innerText = "建立失敗！";
-        msgDiv.className = "mt-2 text-sm font-bold text-red-600";
-        console.error(err);
+        showToast('建立失敗，權限不足', 'error');
       }
     };
 
-    // 重置隊伍進度
-    window.resetTeam = async (code) => {
-      if(confirm(`確定要將隊伍 [${code}] 重置回起始點(關卡0)嗎？此動作將同步影響該隊所有玩家！`)) {
+    window.updateStage = async (teamId, newStageStr) => {
+      const newStage = parseInt(newStageStr);
+      try {
+        await updateDoc(doc(db, "teams", teamId), { stage: newStage });
+        showToast(`[${teamId}] 已強制跳轉至關卡 ${newStage}`);
+      } catch (err) {
+        showToast(`更新進度失敗`, 'error');
+        fetchTeams(); // 失敗則重整回復原狀
+      }
+    };
+
+    window.removeMember = (teamId, email) => {
+      openConfirmModal('踢除隊員', `確定要將玩家 [${email}] 從隊伍 [${teamId}] 中移除嗎？\n移除後該玩家重新登入時，將需要重新輸入通關令牌。`, async () => {
         try {
-          await updateDoc(doc(db, "teams", code), { stage: 0 });
-          alert("重置成功！");
+          await updateDoc(doc(db, "teams", teamId), { members: arrayRemove(email) });
+          showToast(`已移除玩家：${email}`);
           fetchTeams();
         } catch (err) {
-          alert("重置失敗！");
-          console.error(err);
+          showToast('移除失敗', 'error');
         }
-      }
+      });
     };
 
-    // 初始化載入
-    fetchTeams();
+    window.deleteTeam = (teamId) => {
+      openConfirmModal('解散隊伍 (警告)', `確定要永久解散隊伍 [${teamId}] 嗎？\n此動作不可逆，隊伍內的所有進度將被刪除！`, async () => {
+        try {
+          await deleteDoc(doc(db, "teams", teamId));
+          showToast(`已成功解散隊伍：${teamId}`);
+          fetchTeams();
+        } catch (err) {
+          showToast('刪除失敗', 'error');
+        }
+      });
+    };
 
+    lucide.createIcons();
   </script>
 </body>
 </html>
